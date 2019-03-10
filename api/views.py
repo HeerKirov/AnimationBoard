@@ -3,6 +3,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.utils import timezone
 from rest_framework import viewsets, response, status, exceptions, permissions, mixins
 from rest_framework.decorators import action
+from rest_framework.authtoken.models import Token
 from . import exceptions as app_exceptions, serializers as app_serializers
 from . import permissions as app_permissions, models as app_models, enums, services
 
@@ -20,15 +21,30 @@ class User:
             user = authenticate(username=username, password=password)
             if user is not None:
                 login(request, user)
-                if 'HTTP_X_FORWARDED_FOR' in request.META:
-                    user.profile.last_ip = request.META['HTTP_X_FORWARDED_FOR']
-                else:
-                    user.profile.last_ip = request.META['REMOTE_ADDR']
+                user.profile.last_ip = request.META.get('HTTP_X_FORWARDED_FOR') or request.META.get('REMOTE_ADDR')
                 user.profile.last_login = timezone.now()
                 user.profile.save()
+                return response.Response(status=status.HTTP_200_OK)
             else:
                 raise exceptions.AuthenticationFailed()
-            return response.Response(status=status.HTTP_200_OK)
+
+    class Token(viewsets.ViewSet):
+        @staticmethod
+        def create(request):
+            if request.user.is_authenticated:
+                raise app_exceptions.AlreadyLogin()
+            data = request.data
+            app_serializers.User.Login(data=data).is_valid(raise_exception=True)
+            username = data['username']
+            password = data['password']
+            user = authenticate(username=username, password=password)
+            if user is not None:
+                token, created = Token.objects.get_or_create(user=user)
+                user.profile.last_ip = request.META.get('HTTP_X_FORWARDED_FOR') or request.META.get('REMOTE_ADDR')
+                user.profile.last_login = timezone.now()
+                user.profile.save()
+                return response.Response({'token': token.key}, status=status.HTTP_200_OK)
+            raise exceptions.AuthenticationFailed()
 
     class Logout(viewsets.ViewSet):
         permission_classes = (permissions.IsAuthenticated,)

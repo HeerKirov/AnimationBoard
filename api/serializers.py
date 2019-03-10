@@ -10,6 +10,13 @@ class User:
         class Meta:
             fields = ('username', 'password')
 
+    class Token(serializers.Serializer):
+        username = serializers.CharField(max_length=150, allow_null=False, allow_blank=False, write_only=True)
+        password = serializers.CharField(max_length=256, allow_null=False, allow_blank=False, write_only=True)
+
+        class Meta:
+            fields = ('username', 'password')
+
     class Register(serializers.Serializer):
         username = serializers.CharField(max_length=150, allow_null=False, allow_blank=False, write_only=True)
         name = serializers.CharField(max_length=32, allow_null=False, allow_blank=False, write_only=True)
