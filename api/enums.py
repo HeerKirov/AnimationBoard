@@ -26,7 +26,6 @@ ANIMATION_PUBLISH_TYPE_CHOICE = (
 )
 
 ANIMATION_LIMIT_LEVEL_CHOICE = (
-    ('CHILD', 'CHILD'),
     ('ALL', 'ALL'),
     ('R12', 'R12'),
     ('R15', 'R15'),

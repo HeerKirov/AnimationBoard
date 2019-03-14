@@ -25,14 +25,11 @@ class SelfOnly(permissions.BasePermission):
 
 class IsStaffOrReadOnly(permissions.BasePermission):
     def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
         user = request.user
         if user is not None:
-            if request.method in permissions.SAFE_METHODS:
-                return user.is_authenticated
-            else:
-                return user.is_authenticated and user.is_staff
-        else:
-            return False
+            return user.is_authenticated and user.is_staff
 
 
 class IsStaff(permissions.BasePermission):

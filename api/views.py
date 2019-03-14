@@ -4,7 +4,7 @@ from django.utils import timezone
 from rest_framework import viewsets, response, status, exceptions, permissions, mixins
 from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
-from . import exceptions as app_exceptions, serializers as app_serializers
+from . import exceptions as app_exceptions, serializers as app_serializers, filters as app_filters
 from . import permissions as app_permissions, models as app_models, enums, services
 
 
@@ -69,8 +69,9 @@ class User:
                 raise app_exceptions.ApiError('UserExists', 'Username is already exist.')
             elif registration_code is not None:
                 if services.Setting.setting().register_mode == enums.GlobalSettingRegisterMode.close:
-                    return response.Response({'detail': 'Register by registration key was forbidden by admin.'},
-                                             status=status.HTTP_403_FORBIDDEN)
+                    raise app_exceptions.ApiError('CodeForbidden',
+                                                  'Register by registration key was forbidden by admin.',
+                                                  status.HTTP_403_FORBIDDEN)
                 if app_models.RegistrationCode.objects.filter(code=registration_code, enable=True).exists():
                     key = app_models.RegistrationCode.objects.filter(code=registration_code, enable=True).first()
                     key.enable = False
@@ -95,8 +96,8 @@ class User:
                     raise app_exceptions.ApiError('WrongKey', 'Wrong registration key.')
             else:
                 if services.Setting.setting().register_mode != enums.GlobalSettingRegisterMode.open:
-                    return response.Response({'detail': 'Register was forbidden by admin.'},
-                                             status=status.HTTP_403_FORBIDDEN)
+                    raise app_exceptions.ApiError('RegisterForbidden', 'Register was forbidden by admin.',
+                                                  status.HTTP_403_FORBIDDEN)
                 profile = services.Profile.create_full_user(username=username, name=name, password=password,
                                                             is_staff=False, is_superuser=False,
                                                             create_path=enums.ProfileCreatePath.register)
@@ -170,9 +171,9 @@ class Database:
         serializer_class = app_serializers.Database.Animation
         permission_classes = (app_permissions.IsStaffOrReadOnly,)
         lookup_field = 'id'
-        filter_fields = ('have_cover', 'original_work_type', 'publish_type', 'publish_time', 'limit_level', 'tags__name')
+        filterset_class = app_filters.Database.Animation
         search_fields = ('title', 'origin_title', 'other_title', 'tags__name')
-        ordering_fields = ('id', 'title', 'original_work_type', 'publish_type', 'limit_level', 'create_time', 'update_time')
+        ordering_fields = ('id', 'title', 'original_work_type', 'publish_type', 'limit_level', 'publish_time', 'create_time', 'update_time')
 
         def perform_create(self, serializer):
             serializer.validated_data['creator'] = self.request.user.username
