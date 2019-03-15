@@ -172,7 +172,7 @@ class Database:
         permission_classes = (app_permissions.IsStaffOrReadOnly,)
         lookup_field = 'id'
         filterset_class = app_filters.Database.Animation
-        search_fields = ('title', 'origin_title', 'other_title', 'tags__name')
+        search_fields = ('title', 'origin_title', 'other_title', 'tags__name', 'keyword')
         ordering_fields = ('id', 'title', 'original_work_type', 'publish_type', 'limit_level', 'publish_time', 'create_time', 'update_time')
 
         def perform_create(self, serializer):
@@ -220,7 +220,7 @@ class Database:
         queryset = app_models.Tag.objects
         serializer_class = app_serializers.Database.Tag
         permission_classes = (app_permissions.IsStaffOrReadOnly,)
-        lookup_field = 'id'
+        lookup_field = 'name'
         filter_fields = ('name',)
         search_fields = ('name', 'introduction')
         ordering_fields = ('id', 'name', 'create_time', 'update_time')

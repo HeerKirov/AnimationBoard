@@ -2,6 +2,17 @@ from rest_framework import serializers, validators
 from . import models as app_models, enums, utils, services, exceptions as app_exceptions
 
 
+class Util:
+    class StaffInfo(serializers.ModelSerializer):
+        id = serializers.IntegerField(read_only=True)
+        name = serializers.CharField(allow_null=False, max_length=64)
+        is_organization = serializers.BooleanField(allow_null=False)
+
+        class Meta:
+            model = app_models.Staff
+            fields = ('id', 'name', 'is_organization')
+
+
 class User:
     class Login(serializers.Serializer):
         username = serializers.CharField(max_length=150, allow_null=False, allow_blank=False, write_only=True)
@@ -86,6 +97,8 @@ class Database:
         original_work_authors = serializers.PrimaryKeyRelatedField(queryset=app_models.Staff.objects.all(), many=True)
         staff_companies = serializers.PrimaryKeyRelatedField(queryset=app_models.Staff.objects.all(), many=True)
         staff_supervisors = serializers.PrimaryKeyRelatedField(queryset=app_models.Staff.objects.all(), many=True)
+
+        staff_info = Util.StaffInfo(read_only=True, many=True, source='all_staffs')
 
         publish_type = serializers.ChoiceField(enums.ANIMATION_PUBLISH_TYPE_CHOICE, allow_null=False)
         publish_time = serializers.DateField(allow_null=True)
@@ -178,7 +191,7 @@ class Database:
 
         class Meta:
             model = app_models.Animation
-            fields = ('id', 'have_cover', 'title', 'origin_title', 'other_title',
+            fields = ('id', 'have_cover', 'title', 'origin_title', 'other_title', 'staff_info',
                       'original_work_type', 'original_work_authors', 'staff_companies', 'staff_supervisors',
                       'publish_type', 'publish_time', 'sum_quantity', 'published_quantity',
                       'duration', 'publish_plan', 'subtitle_list',
