@@ -235,7 +235,7 @@ class Personal:
     class Diary(serializers.ModelSerializer):
         id = serializers.IntegerField(read_only=True)
         title = serializers.CharField(read_only=True)
-        animation = serializers.PrimaryKeyRelatedField(write_only=True, queryset=app_models.Animation.objects.all())
+        animation = serializers.PrimaryKeyRelatedField(queryset=app_models.Animation.objects.all(), allow_null=False)
 
         watched_record = serializers.ListField(child=serializers.DateTimeField(allow_null=False), allow_null=False,
                                                default=lambda: [])
@@ -333,7 +333,7 @@ class Personal:
     class Comment(serializers.ModelSerializer):
         id = serializers.IntegerField(read_only=True)
         title = serializers.CharField(read_only=True)
-        animation = serializers.PrimaryKeyRelatedField(write_only=True, queryset=app_models.Animation.objects.all())
+        animation = serializers.PrimaryKeyRelatedField(queryset=app_models.Animation.objects.all(), allow_null=False)
 
         score = serializers.IntegerField(allow_null=True, default=None, min_value=1, max_value=10)
         short_comment = serializers.CharField(max_length=128, allow_null=True, default=None)

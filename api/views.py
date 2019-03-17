@@ -239,7 +239,7 @@ class Personal:
         queryset = app_models.Diary.objects
         serializer_class = app_serializers.Personal.Diary
         permission_classes = (app_permissions.SelfOnly,)
-        lookup_field = 'id'
+        lookup_field = 'animation_id'
         filter_fields = ('title', 'status', 'watch_many_times', 'watch_original_work')
         search_fields = ('title',)
         ordering_fields = ('id', 'title', 'watched_quantity', 'sum_quantity', 'published_quantity', 'status',
@@ -252,7 +252,7 @@ class Personal:
         queryset = app_models.Comment.objects
         serializer_class = app_serializers.Personal.Comment
         permission_classes = (app_permissions.SelfOnly,)
-        lookup_field = 'id'
+        lookup_field = 'animation_id'
         filter_fields = ('title', 'score')
         search_fields = ('title', 'short_comment', 'article')
         ordering_fields = ('id', 'title', 'score', 'create_time', 'update_time')
