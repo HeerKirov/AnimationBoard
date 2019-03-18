@@ -88,7 +88,7 @@ class Profile:
 class Database:
     class Animation(serializers.ModelSerializer):
         id = serializers.IntegerField(read_only=True)
-        have_cover = serializers.BooleanField(read_only=True)
+        cover = serializers.CharField(read_only=True)
         title = serializers.CharField(allow_null=False, allow_blank=False, max_length=64)
         origin_title = serializers.CharField(allow_null=True, max_length=64)
         other_title = serializers.CharField(allow_null=True, max_length=64)
@@ -124,6 +124,20 @@ class Database:
         creator = serializers.CharField(read_only=True)
         update_time = serializers.DateTimeField(read_only=True)
         updater = serializers.CharField(read_only=True)
+
+        def __init__(self, *args, **kwargs):
+            simple = kwargs.pop('simple', False)
+            super(Database.Animation, self).__init__(*args, **kwargs)
+            if simple:
+                exclude = ['original_relations', 'links', 'relations', 'publish_plan', 'subtitle_list']
+                for field_name in exclude:
+                    self.fields.pop(field_name)
+
+        def __new__(cls, *args, **kwargs):
+            many = kwargs.get('many', False)
+            if many:
+                kwargs['simple'] = True
+            return super(Database.Animation, cls).__new__(cls, *args, **kwargs)
 
         def create(self, validated_data):
             sum_quantity = validated_data.get('sum_quantity')
@@ -165,11 +179,16 @@ class Database:
             if 'original_relations' in validated_data and validated_data['original_relations'] is not None:
                 original_relations = validated_data.pop('original_relations')
                 self.check_original_relations(original_relations)
-                super().update(instance, validated_data)
+                super().update(instance, validated_data)    # 对animation主体的保存早于拓扑
                 utils.RelationsMap(lambda i: app_models.Animation.objects.filter(id=i).first(),
                                    instance.id, original_relations)
                 return app_models.Animation.objects.filter(id=instance.id).first()
             else:
+                # 在没有更新关系，且更新了title时，才会把title更新到拓扑。
+                if 'title' in validated_data:
+                    utils.spread_cache_field(instance.id, instance.relations,
+                                             lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all(),
+                                             'title', validated_data.get('title'))
                 return super().update(instance, validated_data)
 
         @staticmethod
@@ -191,7 +210,7 @@ class Database:
 
         class Meta:
             model = app_models.Animation
-            fields = ('id', 'have_cover', 'title', 'origin_title', 'other_title', 'staff_info',
+            fields = ('id', 'cover', 'title', 'origin_title', 'other_title', 'staff_info',
                       'original_work_type', 'original_work_authors', 'staff_companies', 'staff_supervisors',
                       'publish_type', 'publish_time', 'sum_quantity', 'published_quantity',
                       'duration', 'publish_plan', 'subtitle_list',

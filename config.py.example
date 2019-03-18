@@ -25,3 +25,7 @@ AUTO_UPDATE_SETTINGS = {
     'enable': True,
     'interval': '*/15 * * * *'
 }
+
+COVER_STORAGE = {
+    'FILEPATH': 'cover'
+}

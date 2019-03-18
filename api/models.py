@@ -73,7 +73,7 @@ class RegistrationCode(models.Model):
 
 class Animation(models.Model):
     id = models.BigAutoField(primary_key=True, null=False)
-    have_cover = models.BooleanField(null=False, default=False)
+    cover = models.CharField(max_length=256, null=True, default=None)
     title = models.CharField(max_length=64, null=False, blank=False)
     origin_title = models.CharField(max_length=64, null=True)
     other_title = models.CharField(max_length=64, null=True)

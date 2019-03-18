@@ -110,8 +110,14 @@ class RelationsMap(object):
         # 开始处理队列
         while len(queue) > 0:
             (this_index, this, relations) = queue.pop(0)
-            for (rel, id_list) in relations.items():
-                for animation_id in id_list:
+            for (rel, obj_list) in relations.items():
+                for animation_obj in obj_list:
+                    # FIXED
+                    if isinstance(animation_obj, dict):
+                        animation_id = animation_obj.get('id')
+                    else:
+                        animation_id = animation_obj
+                    # FIXED END
                     if animation_id not in unique_set:
                         unique_set.add(animation_id)
                         animation = self.query(animation_id)
@@ -173,7 +179,11 @@ class RelationsMap(object):
                         relations[relation] = rel_list
                     else:
                         rel_list = relations[relation]
-                    rel_list.append(self.animations[goal_index].id)
+                    rel_list.append({
+                        'id': self.animations[goal_index].id,
+                        'title': self.animations[goal_index].title,
+                        'cover': self.animations[goal_index].cover
+                    })
             if original:
                 animation.original_relations = relations
             else:
@@ -237,10 +247,43 @@ class RelationsMap(object):
             for animation_id in id_list:
                 all_id_set.add(animation_id)
         deleted = []
-        for (rel, id_list) in old_relations.items():
-            for animation_id in id_list:
+        for (rel, obj_list) in old_relations.items():
+            for animation_obj in obj_list:
+                # TODO FIXED 向前兼容的部分代码。这些代码可以在正式版本前移除。
+                if isinstance(animation_obj, dict):
+                    animation_id = animation_obj.get('id')
+                else:
+                    animation_id = animation_obj
+                # FIXED END
                 if animation_id not in all_id_set:
                     deleted.append(animation_id)
         if len(deleted) > 0:
             ret[Relation.deleted] = deleted
         return ret
+
+
+def spread_cache_field(instance_id, relations, query, field_name, value):
+    id_list = []
+    for (rel, obj_list) in relations.items():
+        for animation_obj in obj_list:
+            # FIXED
+            if isinstance(animation_obj, dict):
+                animation_id = animation_obj.get('id')
+            else:
+                animation_id = animation_obj
+            # FIXED END
+            id_list.append(animation_id)
+    if len(id_list) > 0:
+        animations = query(id_list)
+        # 处理每一个查找到的animation，修改其relations中的有关自己的field_name。original_relations无需修改。
+        for animation in animations:
+            flag = False
+            for (rel, obj_list) in animation.relations.items():
+                for animation_obj in obj_list:
+                    # FIXED
+                    if isinstance(animation_obj, dict) and animation_obj.get('id', None) == instance_id:
+                        animation_obj[field_name] = value
+                        flag = True
+                    # FIXED END
+            if flag:
+                animation.save()

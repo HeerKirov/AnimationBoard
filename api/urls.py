@@ -1,3 +1,4 @@
+from django.urls import path
 from rest_framework import routers
 from . import views as app_views
 
@@ -27,3 +28,6 @@ router.register('admin/system-messages', app_views.Admin.SystemMessage, base_nam
 
 urlpatterns = []
 urlpatterns += router.urls
+urlpatterns += [
+    path('cover/<str:target>/<str:index>/', app_views.Cover.cover)
+]

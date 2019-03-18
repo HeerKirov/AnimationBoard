@@ -1,3 +1,4 @@
+from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.contrib.auth import authenticate, login, logout
 from django.utils import timezone
@@ -5,7 +6,12 @@ from rest_framework import viewsets, response, status, exceptions, permissions, 
 from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
 from . import exceptions as app_exceptions, serializers as app_serializers, filters as app_filters
-from . import permissions as app_permissions, models as app_models, enums, services
+from . import permissions as app_permissions, models as app_models, enums, services, utils
+from AnimationBoard.settings import COVER_DIRS
+from PIL import Image
+import json
+import os
+import uuid
 
 
 class User:
@@ -110,6 +116,124 @@ class User:
                 profile.save()
                 return response.Response(status=status.HTTP_200_OK)
             pass
+
+
+class Cover:
+    """
+    封面上传系统的逻辑说明：
+    - 该系统设计上不止用于animation封面，扩展后也可用于用户头像等。
+    - 该系统使用静态文件传送，同时避免缓存。
+
+    上传逻辑：
+    - 在资源的model有一个cover: string类型的字段。默认为null。
+    - 使用/api/cover/{resource}/{id}/的url。
+    - resource代表资源种类，如animation, profile。id是该资源的主键。
+    - 图像资源在file中传递过来。
+    - 拿到图像后，将关键信息保存在模型层的cover字段中。
+        - 如果cover字段为null，那么，使用hash算法计算出一个hash值，将图像在storage文件夹下保存为{resource}-{id}-{hash}.{ext}。同时把这个名字记录到cover字段上。
+        - 如果不为null，那么先删掉这个字段名所记录的文件，再执行保存。
+
+    取用逻辑：
+    - 要取用一项资源关联的cover，首先get资源，拿到cover字段。
+    - cover字段不是null时，你就可以调取资源/static/cover/{cover}来请求这项资源。
+    """
+    @staticmethod
+    def cover(request, target, index):
+        if request.method == 'POST':
+            if target == 'animation':
+                try:
+                    i = int(index)
+                except ValueError:
+                    return HttpResponse(status=404)
+                return Cover.__post_animation(request, i)
+            else:
+                return HttpResponse(status=404)
+        elif request.method == 'OPTIONS':
+            return Cover.__options()
+        else:
+            return HttpResponse(status=405)
+
+    @staticmethod
+    def __post_animation(request, index):
+        animation = app_models.Animation.objects.filter(id=index).first()
+        if animation is None:
+            return HttpResponse(status=404)
+        file = request.FILES.get('cover')
+        name, ext = Cover.__split_filename(file.name)
+        content_type = file.content_type
+        # 文件类型不对时返回400
+        if content_type[:5] != 'image':
+            return HttpResponse(status=400)
+        # 删除旧的文件
+        if animation.cover is not None:
+            old_path = '%s/%s' % (COVER_DIRS, animation.cover)
+            if os.path.exists(old_path):
+                os.remove(old_path)
+            animation.cover = None
+        # 计算新文件名和新文件路径
+        new_cover_name = 'animation-%s-%s.%s' % (animation.id, uuid.uuid4(), ext)
+        new_path = '%s/%s' % (COVER_DIRS, new_cover_name)
+        # 将文件名保存下来
+        animation.cover = new_cover_name
+        animation.save()
+        # 将文件名扩散到所有的缓存
+        utils.spread_cache_field(animation.id, animation.relations,
+                                 lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all(),
+                                 'cover', new_cover_name)
+        # 存储路径不存在时先创建路径
+        if not os.path.exists(COVER_DIRS):
+            os.makedirs(COVER_DIRS)
+        # 该文件万一已经存在，就删除文件
+        if os.path.exists(new_path):
+            os.remove(new_path)
+        # 将图像写入到一个临时的文件
+        temp_path = '%s/temp-animation-%s.%s' % (COVER_DIRS, uuid.uuid4(), ext)
+        with open(temp_path, 'wb') as f:
+            for c in file.chunks():
+                f.write(c)
+        # 处理这张图片，对其进行裁切和缩放
+        Cover.__analyse_image(temp_path, new_path)
+        return HttpResponse(status=201)
+
+    @staticmethod
+    def __options():
+        return HttpResponse(json.dumps({
+            'name': 'Cover',
+            'description': '',
+            'renders': ["application/json", "text/html"],
+            'parses': ["application/json", "application/x-www-form-urlencoded", "multipart/form-data"],
+            'actions': {
+                'POST': {
+                    'cover': {
+                        'type': 'file',
+                        'required': True,
+                        'label': 'Cover'
+                    }
+                }
+            }
+        }), content_type='application/json')
+
+    @staticmethod
+    def __split_filename(filename):
+        p = filename.rfind('.')
+        if p >= 0:
+            return filename[:p], filename[p + 1:]
+        else:
+            return filename, ''
+
+    @staticmethod
+    def __analyse_image(in_path, out_path, size=384):
+        img = Image.open(in_path)
+        # 裁剪成正方形
+        width, height = img.size
+        if width > height:
+            img = img.crop(((width - height) / 2, 0, (width + height) / 2, height))
+        elif width < height:
+            img = img.crop((0, (height - width) / 2, width, (height + width) / 2))
+        # 压缩到极小的尺寸
+        img.thumbnail((size, size))
+        img.save(out_path)
+        os.remove(in_path)
 
 
 class Profile:
