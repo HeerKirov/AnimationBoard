@@ -42,6 +42,7 @@ class User:
 class Profile:
     class Info(serializers.ModelSerializer):
         id = serializers.IntegerField(read_only=True)
+        cover = serializers.CharField(read_only=True)
         username = serializers.CharField(read_only=True)
         name = serializers.CharField(max_length=32, allow_null=False, allow_blank=False)
         create_time = serializers.DateTimeField(read_only=True)
@@ -51,9 +52,13 @@ class Profile:
 
         is_staff = serializers.BooleanField(read_only=True, source='user')
 
+        animation_update_notice = serializers.BooleanField(allow_null=False, required=False)
+        night_update_mode = serializers.BooleanField(allow_null=False, required=False)
+
         class Meta:
             model = app_models.Profile
-            fields = ('id', 'username', 'name', 'create_time', 'last_login', 'last_ip', 'is_staff')
+            fields = ('id', 'cover', 'username', 'name', 'create_time', 'last_login', 'last_ip', 'is_staff',
+                      'animation_update_notice', 'night_update_mode')
 
     class Password(serializers.Serializer):
         old_password = serializers.CharField(write_only=True, allow_null=False, allow_blank=False,

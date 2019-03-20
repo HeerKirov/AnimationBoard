@@ -20,27 +20,24 @@ class Profile:
 class Message:
     @staticmethod
     def send_system_notice(owner, content):
-        msg = app_models.Message(type=enums.MessageType.system, content={
-            "content": content
-        }, owner=owner)
+        msg = app_models.Message(type=enums.MessageType.system, content={"content": content}, owner=owner)
         msg.save()
         return msg
 
     @staticmethod
     def send_chat(owner, sender, content):
-        msg = app_models.Message(type=enums.MessageType.chat, content={
-            "content": content
-        }, owner=owner, sender=sender)
+        msg = app_models.Message(type=enums.MessageType.chat, content={"content": content}, owner=owner, sender=sender)
         msg.save()
         return msg
 
     @staticmethod
     def send_delivery_update(owner, updates):
-        msg = app_models.Message(type=enums.MessageType.update, content={
-            "update": updates
-        }, owner=owner)
-        msg.save()
-        return msg
+        profile = app_models.Profile.objects.filter(id__exact=owner.id).first()
+        if profile.animation_update_notice:
+            msg = app_models.Message(type=enums.MessageType.update, content={"update": updates}, owner=owner)
+            msg.save()
+            return msg
+        return None
 
 
 class RegistrationCode:

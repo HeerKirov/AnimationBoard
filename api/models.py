@@ -9,10 +9,10 @@ class Profile(models.Model):
     id = models.AutoField(primary_key=True, null=False, blank=False)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     name = models.CharField(max_length=32)
-    have_cover = models.BooleanField(null=False, default=False)
+    cover = models.CharField(max_length=256, null=True, default=None)
 
-    animation_update_notice = models.BooleanField(null=False, default=True)
-    night_update_mode = models.BooleanField(null=False, default=False)
+    animation_update_notice = models.BooleanField(null=False, default=True)     # 订阅的动画更新时，会发送消息提示
+    night_update_mode = models.BooleanField(null=False, default=False)          # 使用深夜动画表(26:00模式)
 
     enable = models.BooleanField(null=False, default=True)
     create_path = models.CharField(max_length=8, null=False, blank=False, choices=enums.PROFILE_CREATE_PATH_CHOICE)

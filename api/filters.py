@@ -43,7 +43,11 @@ class Database:
         publish_time__le = django_filters.DateFilter(field_name='publish_time', lookup_expr='le')
         limit_level = django_filters.CharFilter(lookup_expr='iexact')
         tags__name = EachSearchFilter(field_name='tags__name', lookup_expr='iexact')
+        original_work_authors = django_filters.NumberFilter(field_name='original_work_authors__id', lookup_expr='exact')
+        staff_companies = django_filters.NumberFilter(field_name='staff_companies__id', lookup_expr='exact')
+        staff_supervisors = django_filters.NumberFilter(field_name='staff_supervisors__id', lookup_expr='exact')
 
         class Meta:
             model = app_models.Animation
-            fields = ('original_work_type', 'publish_type', 'publish_time__ge', 'publish_time__le', 'limit_level', 'tags__name')
+            fields = ('original_work_type', 'publish_type', 'publish_time__ge', 'publish_time__le', 'limit_level',
+                      'tags__name', 'staff_supervisors', 'staff_companies', 'original_work_authors')

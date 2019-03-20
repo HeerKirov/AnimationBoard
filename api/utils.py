@@ -249,7 +249,7 @@ class RelationsMap(object):
         deleted = []
         for (rel, obj_list) in old_relations.items():
             for animation_obj in obj_list:
-                # TODO FIXED 向前兼容的部分代码。这些代码可以在正式版本前移除。
+                # FIXED 向前兼容的部分代码。这些代码可以在正式版本前移除。
                 if isinstance(animation_obj, dict):
                     animation_id = animation_obj.get('id')
                 else:
@@ -263,6 +263,15 @@ class RelationsMap(object):
 
 
 def spread_cache_field(instance_id, relations, query, field_name, value):
+    """
+    更新关系网络中，instance的field_name缓存的值为value。
+    :param instance_id:
+    :param relations:
+    :param query:
+    :param field_name:
+    :param value:
+    :return:
+    """
     id_list = []
     for (rel, obj_list) in relations.items():
         for animation_obj in obj_list:
@@ -285,5 +294,43 @@ def spread_cache_field(instance_id, relations, query, field_name, value):
                         animation_obj[field_name] = value
                         flag = True
                     # FIXED END
+            if flag:
+                animation.save()
+
+
+def remove_cache_instance(instance_id, relations, query):
+    """
+    从关系网络中移除该instance。
+    :param instance_id:
+    :param relations:
+    :param query:
+    :return:
+    """
+    id_list = []
+    for (rel, obj_list) in relations.items():
+        for animation_obj in obj_list:
+            # FIXED
+            if isinstance(animation_obj, dict):
+                animation_id = animation_obj.get('id')
+            else:
+                animation_id = animation_obj
+            # END FIXED
+            id_list.append(animation_id)
+    if len(id_list) > 0:
+        animations = query(id_list)
+        for animation in animations:
+            flag = False
+            for (rel, obj_list) in animation.relations.items():
+                for i in range(len(obj_list) - 1, -1, -1):
+                    animation_obj = obj_list[i]
+                    if isinstance(animation_obj, dict) and animation_obj.get('id', None) == instance_id:
+                        del obj_list[i]
+                        flag = True
+            for (rel, obj_list) in animation.original_relations.items():
+                for i in range(len(obj_list) - 1, -1, -1):
+                    animation_obj = obj_list[i]
+                    if isinstance(animation_obj, dict) and animation_obj.get('id', None) == instance_id:
+                        del obj_list[i]
+                        flag = True
             if flag:
                 animation.save()

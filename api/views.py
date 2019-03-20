@@ -145,7 +145,9 @@ class Cover:
                     i = int(index)
                 except ValueError:
                     return HttpResponse(status=404)
-                return Cover.__post_animation(request, i)
+                return Cover.__post(request, 'animation', i)
+            elif target == 'profile':
+                return Cover.__post(request, 'profile', index)
             else:
                 return HttpResponse(status=404)
         elif request.method == 'OPTIONS':
@@ -154,9 +156,14 @@ class Cover:
             return HttpResponse(status=405)
 
     @staticmethod
-    def __post_animation(request, index):
-        animation = app_models.Animation.objects.filter(id=index).first()
-        if animation is None:
+    def __post(request, resource, index):
+        if resource == 'animation':
+            res = app_models.Animation.objects.filter(id=index).first()
+        elif resource == 'profile':
+            res = app_models.Profile.objects.filter(username=index).first()
+        else:
+            res = None
+        if res is None:
             return HttpResponse(status=404)
         file = request.FILES.get('cover')
         name, ext = Cover.__split_filename(file.name)
@@ -165,21 +172,22 @@ class Cover:
         if content_type[:5] != 'image':
             return HttpResponse(status=400)
         # 删除旧的文件
-        if animation.cover is not None:
-            old_path = '%s/%s' % (COVER_DIRS, animation.cover)
+        if res.cover is not None:
+            old_path = '%s/%s' % (COVER_DIRS, res.cover)
             if os.path.exists(old_path):
                 os.remove(old_path)
-            animation.cover = None
+            res.cover = None
         # 计算新文件名和新文件路径
-        new_cover_name = 'animation-%s-%s.%s' % (animation.id, uuid.uuid4(), ext)
+        new_cover_name = '%s-%s-%s.%s' % (resource, res.id, uuid.uuid4(), ext)
         new_path = '%s/%s' % (COVER_DIRS, new_cover_name)
         # 将文件名保存下来
-        animation.cover = new_cover_name
-        animation.save()
+        res.cover = new_cover_name
+        res.save()
         # 将文件名扩散到所有的缓存
-        utils.spread_cache_field(animation.id, animation.relations,
-                                 lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all(),
-                                 'cover', new_cover_name)
+        if resource == 'animation':
+            utils.spread_cache_field(res.id, res.relations,
+                                     lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all(),
+                                     'cover', new_cover_name)
         # 存储路径不存在时先创建路径
         if not os.path.exists(COVER_DIRS):
             os.makedirs(COVER_DIRS)
@@ -187,7 +195,7 @@ class Cover:
         if os.path.exists(new_path):
             os.remove(new_path)
         # 将图像写入到一个临时的文件
-        temp_path = '%s/temp-animation-%s.%s' % (COVER_DIRS, uuid.uuid4(), ext)
+        temp_path = '%s/temp-%s-%s.%s' % (COVER_DIRS, resource, uuid.uuid4(), ext)
         with open(temp_path, 'wb') as f:
             for c in file.chunks():
                 f.write(c)
@@ -245,7 +253,8 @@ class Profile:
 
         def list(self, request, *args, **kwargs):
             profile = request.user.profile
-            return redirect('api-profile-info-detail', username=profile.username)
+            self.kwargs['username'] = profile.username
+            return self.retrieve(request, *args, **kwargs)
 
     class Password(mixins.UpdateModelMixin, viewsets.GenericViewSet):
         queryset = app_models.User.objects.all()
@@ -296,7 +305,8 @@ class Database:
         permission_classes = (app_permissions.IsStaffOrReadOnly,)
         lookup_field = 'id'
         filterset_class = app_filters.Database.Animation
-        search_fields = ('title', 'origin_title', 'other_title', 'tags__name', 'keyword')
+        search_fields = ('title', 'origin_title', 'other_title', 'tags__name', 'keyword',
+                         'staff_companies__name', 'staff_supervisors__name', 'original_work_authors__name')
         ordering_fields = ('id', 'title', 'original_work_type', 'publish_type', 'limit_level', 'publish_time', 'create_time', 'update_time')
 
         def perform_create(self, serializer):
@@ -322,6 +332,10 @@ class Database:
                         else:
                             diary.status = enums.DiaryStatus.watching
                     diary.save()
+
+        def perform_destroy(self, instance):
+            utils.remove_cache_instance(instance.id, instance.relations, lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all())
+            super().perform_destroy(instance)
 
     class Staff(viewsets.ModelViewSet):
         queryset = app_models.Staff.objects
