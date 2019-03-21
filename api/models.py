@@ -169,15 +169,17 @@ class Diary(models.Model):
     watched_record = ArrayField(models.DateTimeField(null=False), null=False)
     watched_quantity = models.IntegerField(null=False)
     status = models.CharField(choices=enums.DIARY_STATUS_CHOICE, max_length=10, null=False)
+    finish_time = models.DateTimeField(null=True, default=None)
 
     watch_many_times = models.BooleanField(null=False)
     watch_original_work = models.BooleanField(null=False)
 
     create_time = models.DateTimeField(null=False, auto_now_add=True)
     update_time = models.DateTimeField(null=True, auto_now=True)
-    notice_last_quantity = models.IntegerField(null=True, default=None)
 
+    # TODO 由于publish plan字段强制使用了连接，这些缓存字段也可以用了，因此可以去掉了。
     title = models.CharField(max_length=64, null=False, blank=False)
+    cover = models.CharField(max_length=256, null=True, default=None)
     sum_quantity = models.IntegerField(null=True)
     published_quantity = models.IntegerField(null=True)
 

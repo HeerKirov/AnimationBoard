@@ -35,6 +35,27 @@ class EachSearchFilter(django_filters.Filter):
         return result
 
 
+class ArrayFilter(django_filters.Filter):
+    """将参数解析成列表。解析的规则是按空格分割."""
+    field_class = forms.CharField
+
+    def filter(self, qs, value):
+        if value in EMPTY_VALUES:
+            return qs
+        if isinstance(value, str):
+            array = value.split(' ')
+        elif isinstance(value, list):
+            array = value
+        else:
+            array = []
+        if len(array) <= 0:
+            return qs
+        if self.distinct:
+            qs = qs.distinct()
+        lookup = '%s__%s' % (self.field_name, self.lookup_expr)
+        return self.get_method(qs)(**{lookup: array})
+
+
 class Database:
     class Animation(django_filters.FilterSet):
         original_work_type = django_filters.CharFilter(lookup_expr='iexact')
@@ -51,3 +72,16 @@ class Database:
             model = app_models.Animation
             fields = ('original_work_type', 'publish_type', 'publish_time__ge', 'publish_time__le', 'limit_level',
                       'tags__name', 'staff_supervisors', 'staff_companies', 'original_work_authors')
+
+
+class Personal:
+    class Diary(django_filters.FilterSet):
+        title = django_filters.CharFilter()
+        status = django_filters.CharFilter()
+        status__in = ArrayFilter(field_name='status', lookup_expr='in')
+        watch_many_times = django_filters.BooleanFilter()
+        watch_original_work = django_filters.BooleanFilter()
+
+        class Meta:
+            model = app_models.Diary
+            fields = ('title', 'status', 'status__in', 'watch_many_times', 'watch_original_work')

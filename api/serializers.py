@@ -1,5 +1,6 @@
 from rest_framework import serializers, validators
 from . import models as app_models, enums, utils, services, exceptions as app_exceptions
+from django.utils import timezone
 
 
 class Util:
@@ -51,13 +52,15 @@ class Profile:
         last_ip = serializers.CharField(read_only=True)
 
         is_staff = serializers.BooleanField(read_only=True, source='user')
+        is_superuser = serializers.BooleanField(read_only=True, source='user')
 
         animation_update_notice = serializers.BooleanField(allow_null=False, required=False)
         night_update_mode = serializers.BooleanField(allow_null=False, required=False)
 
         class Meta:
             model = app_models.Profile
-            fields = ('id', 'cover', 'username', 'name', 'create_time', 'last_login', 'last_ip', 'is_staff',
+            fields = ('id', 'cover', 'username', 'name', 'create_time', 'last_login', 'last_ip',
+                      'is_staff', 'is_superuser',
                       'animation_update_notice', 'night_update_mode')
 
     class Password(serializers.Serializer):
@@ -259,14 +262,17 @@ class Personal:
     class Diary(serializers.ModelSerializer):
         id = serializers.IntegerField(read_only=True)
         title = serializers.CharField(read_only=True)
+        cover = serializers.CharField(read_only=True)
         animation = serializers.PrimaryKeyRelatedField(queryset=app_models.Animation.objects.all(), allow_null=False)
 
         watched_record = serializers.ListField(child=serializers.DateTimeField(allow_null=False), allow_null=False,
                                                default=lambda: [])
+        publish_plan = serializers.ListField(child=serializers.DateTimeField(allow_null=False), read_only=True, source='animation.publish_plan')
         watched_quantity = serializers.IntegerField(allow_null=False)
         sum_quantity = serializers.IntegerField(read_only=True)
         published_quantity = serializers.IntegerField(read_only=True)
         status = serializers.ChoiceField(enums.DIARY_STATUS_CHOICE, required=False, allow_null=False)
+        finish_time = serializers.DateTimeField(read_only=True)
 
         watch_many_times = serializers.BooleanField(allow_null=False, default=False)
         watch_original_work = serializers.BooleanField(allow_null=False, default=False)
@@ -277,6 +283,8 @@ class Personal:
         def create(self, validated_data):
             profile = self.context['request'].user.profile
             animation = validated_data['animation']
+            validated_data['title'] = animation.title
+            validated_data['cover'] = animation.cover
             if app_models.Diary.objects.filter(animation=animation, owner=profile).exists():
                 raise app_exceptions.ApiError('Exists', 'Diary of this animation is exists.')
             validated_data['owner'] = profile
@@ -307,6 +315,7 @@ class Personal:
                 if sum_quantity is not None:
                     if watched_quantity >= sum_quantity:
                         validated_data['status'] = enums.DiaryStatus.complete
+                        validated_data['finish_time'] = timezone.now()
                     else:
                         validated_data['status'] = enums.DiaryStatus.watching
                 else:
@@ -339,10 +348,16 @@ class Personal:
                 if sum_quantity is not None:
                     if watched_quantity >= sum_quantity:
                         validated_data['status'] = enums.DiaryStatus.complete
+                        if instance.finish_time is None:
+                            validated_data['finish_time'] = timezone.now()
                     else:
                         validated_data['status'] = enums.DiaryStatus.watching
+                        if instance.finish_time is not None:
+                            validated_data['finish_time'] = None
                 else:
                     validated_data['status'] = enums.DiaryStatus.ready
+                    if instance.finish_time is not None:
+                        validated_data['finish_time'] = None
             else:
                 validated_data['status'] = enums.DiaryStatus.give_up
 
@@ -350,8 +365,8 @@ class Personal:
 
         class Meta:
             model = app_models.Diary
-            fields = ('id', 'title', 'animation', 'watched_record',
-                      'watched_quantity', 'sum_quantity', 'published_quantity',
+            fields = ('id', 'title', 'cover', 'animation', 'watched_record', 'publish_plan',
+                      'watched_quantity', 'sum_quantity', 'published_quantity', 'finish_time',
                       'status', 'watch_many_times', 'watch_original_work', 'create_time', 'update_time')
 
     class Comment(serializers.ModelSerializer):

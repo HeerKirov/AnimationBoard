@@ -188,6 +188,9 @@ class Cover:
             utils.spread_cache_field(res.id, res.relations,
                                      lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all(),
                                      'cover', new_cover_name)
+            if hasattr(res, 'diaries'):
+                res.diaries.update(cover=new_cover_name)
+
         # 存储路径不存在时先创建路径
         if not os.path.exists(COVER_DIRS):
             os.makedirs(COVER_DIRS)
@@ -201,7 +204,7 @@ class Cover:
                 f.write(c)
         # 处理这张图片，对其进行裁切和缩放
         Cover.__analyse_image(temp_path, new_path)
-        return HttpResponse(status=201)
+        return HttpResponse(json.dumps({'cover': new_cover_name}), status=201, content_type='application/json')
 
     @staticmethod
     def __options():
@@ -320,12 +323,13 @@ class Database:
                 diaries = serializer.instance.diaries.all()
                 sum_quantity = serializer.instance.sum_quantity
                 published_quantity = serializer.instance.published_quantity
-
+                title = serializer.instance.title
                 for diary in diaries:
+                    diary.title = title
                     diary.sum_quantity = sum_quantity
                     diary.published_quantity = published_quantity
                     if diary.status != enums.DiaryStatus.give_up:
-                        if sum_quantity is None or published_quantity is None:
+                        if sum_quantity is None:
                             diary.status = enums.DiaryStatus.ready
                         elif diary.watched_quantity >= sum_quantity:
                             diary.status = enums.DiaryStatus.complete
@@ -378,7 +382,7 @@ class Personal:
         serializer_class = app_serializers.Personal.Diary
         permission_classes = (app_permissions.SelfOnly,)
         lookup_field = 'animation_id'
-        filter_fields = ('title', 'status', 'watch_many_times', 'watch_original_work')
+        filterset_class = app_filters.Personal.Diary
         search_fields = ('title',)
         ordering_fields = ('id', 'title', 'watched_quantity', 'sum_quantity', 'published_quantity', 'status',
                            'create_time', 'update_time')
