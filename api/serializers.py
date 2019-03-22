@@ -80,8 +80,8 @@ class Profile:
         content = serializers.JSONField(read_only=True)
 
         create_time = serializers.DateTimeField(allow_null=False, read_only=True)
-        owner = serializers.PrimaryKeyRelatedField(read_only=True)
-        sender = serializers.PrimaryKeyRelatedField(read_only=True)
+        sender = serializers.SlugRelatedField(read_only=True, slug_field='username')
+        sender_name = serializers.SlugRelatedField(read_only=True, slug_field='name', source='sender')
 
         def create(self, validated_data):
             profile = self.context['request'].user.profile
@@ -90,7 +90,7 @@ class Profile:
 
         class Meta:
             model = app_models.Message
-            fields = ('id', 'read', 'type', 'content', 'create_time', 'owner', 'sender')
+            fields = ('id', 'read', 'type', 'content', 'create_time', 'sender', 'sender_name')
 
 
 class Database:
@@ -261,16 +261,16 @@ class Database:
 class Personal:
     class Diary(serializers.ModelSerializer):
         id = serializers.IntegerField(read_only=True)
-        title = serializers.CharField(read_only=True)
-        cover = serializers.CharField(read_only=True)
+        title = serializers.CharField(read_only=True, source='animation.title')
+        cover = serializers.CharField(read_only=True, source='animation.cover')
         animation = serializers.PrimaryKeyRelatedField(queryset=app_models.Animation.objects.all(), allow_null=False)
 
-        watched_record = serializers.ListField(child=serializers.DateTimeField(allow_null=False), allow_null=False,
-                                               default=lambda: [])
-        publish_plan = serializers.ListField(child=serializers.DateTimeField(allow_null=False), read_only=True, source='animation.publish_plan')
+        watched_record = serializers.ListField(child=serializers.DateTimeField(), read_only=True)
+        publish_plan = serializers.ListField(child=serializers.DateTimeField(allow_null=False), read_only=True,
+                                             source='animation.publish_plan')
         watched_quantity = serializers.IntegerField(allow_null=False)
-        sum_quantity = serializers.IntegerField(read_only=True)
-        published_quantity = serializers.IntegerField(read_only=True)
+        sum_quantity = serializers.IntegerField(read_only=True, source='animation.sum_quantity')
+        published_quantity = serializers.IntegerField(read_only=True, source='animation.published_quantity')
         status = serializers.ChoiceField(enums.DIARY_STATUS_CHOICE, required=False, allow_null=False)
         finish_time = serializers.DateTimeField(read_only=True)
 
@@ -283,31 +283,23 @@ class Personal:
         def create(self, validated_data):
             profile = self.context['request'].user.profile
             animation = validated_data['animation']
-            validated_data['title'] = animation.title
-            validated_data['cover'] = animation.cover
             if app_models.Diary.objects.filter(animation=animation, owner=profile).exists():
                 raise app_exceptions.ApiError('Exists', 'Diary of this animation is exists.')
             validated_data['owner'] = profile
 
             if animation.sum_quantity is not None and animation.published_quantity is not None:
-                validated_data['sum_quantity'] = animation.sum_quantity
-                validated_data['published_quantity'] = animation.published_quantity
+                # 提取出一个能用于约束下级数值的sum_quantity。没有时是None，因为只是个标杆。
+                sum_quantity = animation.sum_quantity
+                # 提取出一个能用于约束下级数值的published_quantity。没有时识别为0，因为要直接用这个数值限制watched.
+                published_quantity = animation.published_quantity or 0
             else:
-                validated_data['sum_quantity'] = None
-                validated_data['published_quantity'] = None
-
-            # 提取出一个能用于约束下级数值的sum_quantity。没有时是None，因为只是个标杆。
-            sum_quantity = validated_data.get('sum_quantity', None)
-            # 提取出一个能用于约束下级数值的published_quantity。没有时识别为0，因为要直接用这个数值限制watched.
-            published_quantity = validated_data.get('published_quantity', None) or 0
+                sum_quantity = None
+                published_quantity = 0
 
             # 约束watched_quantity和watched_record的数量不超过published_quantity.
             if validated_data.get('watched_quantity') is not None \
                     and validated_data['watched_quantity'] > published_quantity:
                 validated_data['watched_quantity'] = published_quantity
-            if validated_data.get('watched_record') is not None \
-                    and len(validated_data['watched_record']) > published_quantity:
-                validated_data['watched_record'] = validated_data['watched_record'][:published_quantity]
             watched_quantity = validated_data.get('watched_quantity')
 
             status = validated_data.pop('status', enums.DiaryStatus.watching)
@@ -322,6 +314,12 @@ class Personal:
                     validated_data['status'] = enums.DiaryStatus.ready
             else:
                 validated_data['status'] = enums.DiaryStatus.give_up
+
+            if watched_quantity > 0:
+                now = timezone.now()
+                validated_data['watched_record'] = [now for _ in range(0, watched_quantity)]
+            else:
+                validated_data['watched_record'] = []
 
             return super().create(validated_data)
 
@@ -338,10 +336,9 @@ class Personal:
             if validated_data.get('watched_quantity') is not None \
                     and validated_data['watched_quantity'] > published_quantity:
                 validated_data['watched_quantity'] = published_quantity
-            if validated_data.get('watched_record') is not None and len(
-                    validated_data['watched_record']) > published_quantity:
-                validated_data['watched_record'] = validated_data['watched_record'][:published_quantity]
-            watched_quantity = validated_data.get('watched_quantity') or instance.watched_quantity
+            watched_quantity = validated_data.get('watched_quantity', None)
+            if watched_quantity is None:
+                watched_quantity = instance.watched_quantity
 
             status = validated_data.pop('status', None) or instance.status
             if status != enums.DiaryStatus.give_up:
@@ -360,6 +357,13 @@ class Personal:
                         validated_data['finish_time'] = None
             else:
                 validated_data['status'] = enums.DiaryStatus.give_up
+
+            if watched_quantity > len(instance.watched_record):
+                now = timezone.now()
+                r = range(len(instance.watched_record), watched_quantity)
+                validated_data['watched_record'] = instance.watched_record + [now for _ in r]
+            elif watched_quantity < len(instance.watched_record):
+                validated_data['watched_record'] = instance.watched_record[:watched_quantity]
 
             return super().update(instance, validated_data)
 

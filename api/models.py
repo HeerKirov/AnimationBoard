@@ -49,7 +49,6 @@ class Message(models.Model):
                     "animation_title": <string>
                 }
             ]
-        } ]
         }
         """
     id = models.BigAutoField(primary_key=True, null=False)
@@ -176,12 +175,6 @@ class Diary(models.Model):
 
     create_time = models.DateTimeField(null=False, auto_now_add=True)
     update_time = models.DateTimeField(null=True, auto_now=True)
-
-    # TODO 由于publish plan字段强制使用了连接，这些缓存字段也可以用了，因此可以去掉了。
-    title = models.CharField(max_length=64, null=False, blank=False)
-    cover = models.CharField(max_length=256, null=True, default=None)
-    sum_quantity = models.IntegerField(null=True)
-    published_quantity = models.IntegerField(null=True)
 
 
 class Comment(models.Model):

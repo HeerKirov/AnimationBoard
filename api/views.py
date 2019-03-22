@@ -188,9 +188,6 @@ class Cover:
             utils.spread_cache_field(res.id, res.relations,
                                      lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all(),
                                      'cover', new_cover_name)
-            if hasattr(res, 'diaries'):
-                res.diaries.update(cover=new_cover_name)
-
         # 存储路径不存在时先创建路径
         if not os.path.exists(COVER_DIRS):
             os.makedirs(COVER_DIRS)
@@ -289,10 +286,11 @@ class Profile:
         lookup_field = 'id'
         filter_fields = ('read', 'type')
         ordering_fields = ('id', 'read', 'type', 'create_time')
+        ordering = '-create_time'
 
         def get_queryset(self):
             profile = self.request.user.profile
-            queryset = self.queryset.filter(owner=profile).order_by('-create_time')
+            queryset = self.queryset.filter(owner=profile)
             return queryset
 
         @action(detail=False, methods=['GET'])
@@ -322,12 +320,7 @@ class Database:
             if hasattr(serializer.instance, 'diaries'):
                 diaries = serializer.instance.diaries.all()
                 sum_quantity = serializer.instance.sum_quantity
-                published_quantity = serializer.instance.published_quantity
-                title = serializer.instance.title
                 for diary in diaries:
-                    diary.title = title
-                    diary.sum_quantity = sum_quantity
-                    diary.published_quantity = published_quantity
                     if diary.status != enums.DiaryStatus.give_up:
                         if sum_quantity is None:
                             diary.status = enums.DiaryStatus.ready
@@ -385,7 +378,7 @@ class Personal:
         filterset_class = app_filters.Personal.Diary
         search_fields = ('title',)
         ordering_fields = ('id', 'title', 'watched_quantity', 'sum_quantity', 'published_quantity', 'status',
-                           'create_time', 'update_time')
+                           'create_time', 'update_time', 'finish_time')
 
         def get_queryset(self):
             return self.queryset.filter(owner=self.request.user.profile).all()
@@ -445,9 +438,10 @@ class Admin:
 
     class SystemMessage(mixins.ListModelMixin, mixins.CreateModelMixin, mixins.RetrieveModelMixin,
                         viewsets.GenericViewSet):
-        queryset = app_models.Message.objects.filter(type=enums.MessageType.system).order_by('-create_time')
+        queryset = app_models.Message.objects.filter(type=enums.MessageType.system)
         serializer_class = app_serializers.Admin.SystemMessage
         permission_classes = (app_permissions.IsStaff,)
         lookup_field = 'id'
         filter_fields = ('read', 'owner')
         ordering_fields = ('read', 'owner', 'create_time')
+        ordering = '-create_time'
