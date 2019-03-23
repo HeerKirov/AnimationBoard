@@ -110,8 +110,8 @@ class Database:
 
         publish_type = serializers.ChoiceField(enums.ANIMATION_PUBLISH_TYPE_CHOICE, allow_null=False)
         publish_time = serializers.DateField(allow_null=True)
-        sum_quantity = serializers.IntegerField(allow_null=True)
-        published_quantity = serializers.IntegerField(allow_null=True)
+        sum_quantity = serializers.IntegerField(allow_null=True, min_value=0)
+        published_quantity = serializers.IntegerField(allow_null=True, min_value=0)
         duration = serializers.IntegerField(allow_null=True)
         publish_plan = serializers.ListField(child=serializers.DateTimeField(allow_null=False), allow_null=False,
                                              default=lambda: [])
@@ -268,7 +268,7 @@ class Personal:
         watched_record = serializers.ListField(child=serializers.DateTimeField(), read_only=True)
         publish_plan = serializers.ListField(child=serializers.DateTimeField(allow_null=False), read_only=True,
                                              source='animation.publish_plan')
-        watched_quantity = serializers.IntegerField(allow_null=False)
+        watched_quantity = serializers.IntegerField(allow_null=False, min_value=0)
         sum_quantity = serializers.IntegerField(read_only=True, source='animation.sum_quantity')
         published_quantity = serializers.IntegerField(read_only=True, source='animation.published_quantity')
         status = serializers.ChoiceField(enums.DIARY_STATUS_CHOICE, required=False, allow_null=False)
@@ -328,9 +328,9 @@ class Personal:
                 del validated_data['animation']
 
             # 提取出latest的sum_quantity。
-            sum_quantity = instance.sum_quantity
+            sum_quantity = instance.animation.sum_quantity
             # 提取出latest的published_quantity。
-            published_quantity = instance.published_quantity or 0
+            published_quantity = instance.animation.published_quantity or 0
 
             # 约束watched_quantity和watched_record的数量不超过published_quantity.
             if validated_data.get('watched_quantity') is not None \
@@ -375,7 +375,8 @@ class Personal:
 
     class Comment(serializers.ModelSerializer):
         id = serializers.IntegerField(read_only=True)
-        title = serializers.CharField(read_only=True)
+        title = serializers.CharField(read_only=True, source='animation.title')
+        cover = serializers.CharField(read_only=True, source='animation.cover')
         animation = serializers.PrimaryKeyRelatedField(queryset=app_models.Animation.objects.all(), allow_null=False)
 
         score = serializers.IntegerField(allow_null=True, default=None, min_value=1, max_value=10)
@@ -401,7 +402,7 @@ class Personal:
 
         class Meta:
             model = app_models.Comment
-            fields = ('id', 'title', 'animation', 'score', 'short_comment', 'article',
+            fields = ('id', 'title', 'cover', 'animation', 'score', 'short_comment', 'article',
                       'create_time', 'update_time')
 
 

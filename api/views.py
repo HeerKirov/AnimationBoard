@@ -388,9 +388,9 @@ class Personal:
         serializer_class = app_serializers.Personal.Comment
         permission_classes = (app_permissions.SelfOnly,)
         lookup_field = 'animation_id'
-        filter_fields = ('title', 'score')
-        search_fields = ('title', 'short_comment', 'article')
-        ordering_fields = ('id', 'title', 'score', 'create_time', 'update_time')
+        filterset_class = app_filters.Personal.Comment
+        search_fields = ('short_comment', 'article', 'animation__title')
+        ordering_fields = ('id', 'animation__title', 'score', 'create_time', 'update_time')
 
         def get_queryset(self):
             return self.queryset.filter(owner=self.request.user.profile).all()

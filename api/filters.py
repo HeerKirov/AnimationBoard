@@ -60,8 +60,8 @@ class Database:
     class Animation(django_filters.FilterSet):
         original_work_type = django_filters.CharFilter(lookup_expr='iexact')
         publish_type = django_filters.CharFilter(lookup_expr='iexact')
-        publish_time__ge = django_filters.DateFilter(field_name='publish_time', lookup_expr='ge')
-        publish_time__le = django_filters.DateFilter(field_name='publish_time', lookup_expr='le')
+        publish_time__ge = django_filters.DateFilter(field_name='publish_time', lookup_expr='gte')
+        publish_time__le = django_filters.DateFilter(field_name='publish_time', lookup_expr='lte')
         limit_level = django_filters.CharFilter(lookup_expr='iexact')
         tags__name = EachSearchFilter(field_name='tags__name', lookup_expr='iexact')
         original_work_authors = django_filters.NumberFilter(field_name='original_work_authors__id', lookup_expr='exact')
@@ -85,3 +85,12 @@ class Personal:
         class Meta:
             model = app_models.Diary
             fields = ('title', 'status', 'status__in', 'watch_many_times', 'watch_original_work')
+
+    class Comment(django_filters.FilterSet):
+        title = django_filters.CharFilter(field_name='animation__title')
+        score__isnull = django_filters.BooleanFilter(field_name='score', lookup_expr='isnull')
+        score__ge = django_filters.NumberFilter(field_name='score', lookup_expr='gte')
+        score__le = django_filters.NumberFilter(field_name='score', lookup_expr='lte')
+
+        class Meta:
+            fields = ('title', 'score__isnull', 'score__ge', 'score__le')
