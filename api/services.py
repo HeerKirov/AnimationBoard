@@ -1,5 +1,5 @@
 from django.utils import timezone
-from . import models as app_models, enums, utils
+from . import models as app_models, enums
 import uuid
 
 

@@ -6,7 +6,7 @@ from rest_framework import viewsets, response, status, exceptions, permissions, 
 from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
 from . import exceptions as app_exceptions, serializers as app_serializers, filters as app_filters
-from . import permissions as app_permissions, models as app_models, enums, services, utils
+from . import permissions as app_permissions, models as app_models, enums, services, relations
 from AnimationBoard.settings import COVER_DIRS
 from PIL import Image
 import json
@@ -27,8 +27,8 @@ class User:
             user = authenticate(username=username, password=password)
             if user is not None:
                 login(request, user)
-                user.profile.last_ip = request.META.get('HTTP_X_FORWARDED_FOR') or request.META.get('REMOTE_ADDR')
-                user.profile.last_login = timezone.now()
+                user.profile.last_login_ip = request.META.get('HTTP_X_FORWARDED_FOR') or request.META.get('REMOTE_ADDR')
+                user.profile.last_login_time = timezone.now()
                 user.profile.save()
                 return response.Response(status=status.HTTP_200_OK)
             else:
@@ -51,6 +51,24 @@ class User:
                 user.profile.save()
                 return response.Response({'token': token.key}, status=status.HTTP_200_OK)
             raise exceptions.AuthenticationFailed()
+
+    class RefreshToken(viewsets.ViewSet):
+        @staticmethod
+        def create(request):
+            if request.user.is_authenticated and request.user.is_superuser:
+                data = request.data
+                username = data.get('username', None)
+                user = app_models.User.objects.filter(username=username).first()
+                if user is not None:
+                    token, created = Token.objects.get_or_create(user=user)
+                    if not created:
+                        token.delete()
+                        Token.objects.create(user=user)
+                    return response.Response(status=status.HTTP_200_OK)
+                else:
+                    return response.Response({'code': 'UserNotFound', 'detail': 'user is not found.'}, status=status.HTTP_404_NOT_FOUND)
+            else:
+                raise exceptions.AuthenticationFailed()
 
     class Logout(viewsets.ViewSet):
         permission_classes = (permissions.IsAuthenticated,)
@@ -119,110 +137,8 @@ class User:
 
 
 class Cover:
-    """
-    封面上传系统的逻辑说明：
-    - 该系统设计上不止用于animation封面，扩展后也可用于用户头像等。
-    - 该系统使用静态文件传送，同时避免缓存。
-
-    上传逻辑：
-    - 在资源的model有一个cover: string类型的字段。默认为null。
-    - 使用/api/cover/{resource}/{id}/的url。
-    - resource代表资源种类，如animation, profile。id是该资源的主键。
-    - 图像资源在file中传递过来。
-    - 拿到图像后，将关键信息保存在模型层的cover字段中。
-        - 如果cover字段为null，那么，使用hash算法计算出一个hash值，将图像在storage文件夹下保存为{resource}-{id}-{hash}.{ext}。同时把这个名字记录到cover字段上。
-        - 如果不为null，那么先删掉这个字段名所记录的文件，再执行保存。
-
-    取用逻辑：
-    - 要取用一项资源关联的cover，首先get资源，拿到cover字段。
-    - cover字段不是null时，你就可以调取资源/static/cover/{cover}来请求这项资源。
-    """
     @staticmethod
-    def cover(request, target, index):
-        if request.method == 'POST':
-            if target == 'animation':
-                try:
-                    i = int(index)
-                except ValueError:
-                    return HttpResponse(status=404)
-                return Cover.__post(request, 'animation', i)
-            elif target == 'profile':
-                return Cover.__post(request, 'profile', index)
-            else:
-                return HttpResponse(status=404)
-        elif request.method == 'OPTIONS':
-            return Cover.__options()
-        else:
-            return HttpResponse(status=405)
-
-    @staticmethod
-    def __post(request, resource, index):
-        if resource == 'animation':
-            res = app_models.Animation.objects.filter(id=index).first()
-        elif resource == 'profile':
-            res = app_models.Profile.objects.filter(username=index).first()
-        else:
-            res = None
-        if res is None:
-            return HttpResponse(status=404)
-        file = request.FILES.get('cover')
-        name, ext = Cover.__split_filename(file.name)
-        content_type = file.content_type
-        # 文件类型不对时返回400
-        if content_type[:5] != 'image':
-            return HttpResponse(status=400)
-        # 删除旧的文件
-        if res.cover is not None:
-            old_path = '%s/%s' % (COVER_DIRS, res.cover)
-            if os.path.exists(old_path):
-                os.remove(old_path)
-            res.cover = None
-        # 计算新文件名和新文件路径
-        new_cover_name = '%s-%s-%s.%s' % (resource, res.id, uuid.uuid4(), ext)
-        new_path = '%s/%s' % (COVER_DIRS, new_cover_name)
-        # 将文件名保存下来
-        res.cover = new_cover_name
-        res.save()
-        # 将文件名扩散到所有的缓存
-        if resource == 'animation':
-            utils.spread_cache_field(res.id, res.relations,
-                                     lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all(),
-                                     'cover', new_cover_name)
-        # 存储路径不存在时先创建路径
-        if not os.path.exists(COVER_DIRS):
-            os.makedirs(COVER_DIRS)
-        # 该文件万一已经存在，就删除文件
-        if os.path.exists(new_path):
-            os.remove(new_path)
-        # 将图像写入到一个临时的文件
-        temp_path = '%s/temp-%s-%s.%s' % (COVER_DIRS, resource, uuid.uuid4(), ext)
-        with open(temp_path, 'wb') as f:
-            for c in file.chunks():
-                f.write(c)
-        # 处理这张图片，对其进行裁切和缩放
-        Cover.__analyse_image(temp_path, new_path)
-        return HttpResponse(json.dumps({'cover': new_cover_name}), status=201, content_type='application/json')
-
-    @staticmethod
-    def __options():
-        return HttpResponse(json.dumps({
-            'name': 'Cover',
-            'description': '',
-            'renders': ["application/json", "text/html"],
-            'parses': ["application/json", "application/x-www-form-urlencoded", "multipart/form-data"],
-            'actions': {
-                'POST': {
-                    'cover': {
-                        'type': 'file',
-                        'required': True,
-                        'label': 'Cover'
-                    }
-                }
-            }
-        }), content_type='application/json')
-
-    @staticmethod
-    def __split_filename(filename):
+    def split_filename(filename):
         p = filename.rfind('.')
         if p >= 0:
             return filename[:p], filename[p + 1:]
@@ -230,7 +146,7 @@ class Cover:
             return filename, ''
 
     @staticmethod
-    def __analyse_image(in_path, out_path, size=384):
+    def analyse_image(in_path, out_path, size=384):
         img = Image.open(in_path)
         # 裁剪成正方形
         width, height = img.size
@@ -242,6 +158,94 @@ class Cover:
         img.thumbnail((size, size))
         img.save(out_path)
         os.remove(in_path)
+
+    class Animation(viewsets.ViewSet):
+        permission_classes = (app_permissions.IsStaff,)
+
+        @staticmethod
+        def create(request):
+            index = request.POST.get('id')
+            res = app_models.Animation.objects.filter(id=index).first()
+            if res is None:
+                return response.Response(status=404)
+            file = request.FILES.get('cover')
+            name, ext = Cover.split_filename(file.name)
+            content_type = file.content_type
+            # 文件类型不对时返回400
+            if content_type[:5] != 'image':
+                return response.Response(status=400)
+            # 删除旧的文件
+            if res.cover is not None:
+                old_path = '%s/%s' % (COVER_DIRS, res.cover)
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+                res.cover = None
+            # 计算新文件名和新文件路径
+            new_cover_name = '%s-%s-%s.%s' % ('animation', res.id, uuid.uuid4(), ext)
+            new_path = '%s/%s' % (COVER_DIRS, new_cover_name)
+            # 将文件名保存下来
+            res.cover = new_cover_name
+            res.save()
+            # 将文件名扩散到所有的缓存
+            relations.spread_cache_field(res.id, res.relations,
+                                         lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all(),
+                                         'cover', new_cover_name)
+            # 存储路径不存在时先创建路径
+            if not os.path.exists(COVER_DIRS):
+                os.makedirs(COVER_DIRS)
+            # 该文件万一已经存在，就删除文件
+            if os.path.exists(new_path):
+                os.remove(new_path)
+            # 将图像写入到一个临时的文件
+            temp_path = '%s/temp-%s-%s.%s' % (COVER_DIRS, 'animation', uuid.uuid4(), ext)
+            with open(temp_path, 'wb') as f:
+                for c in file.chunks():
+                    f.write(c)
+            # 处理这张图片，对其进行裁切和缩放
+            Cover.analyse_image(temp_path, new_path)
+            return response.Response({'cover': new_cover_name}, status=201)
+
+    class Profile(viewsets.ViewSet):
+        @staticmethod
+        def create(request):
+            index = request.data.get('id')
+            res = app_models.Profile.objects.filter(username=index).first()
+            if res is None:
+                return response.Response(status=404)
+            if not app_permissions.SelfOnly().has_object_permission(request, None, res):
+                return response.Response(status=403)
+            file = request.FILES.get('cover')
+            name, ext = Cover.split_filename(file.name)
+            content_type = file.content_type
+            # 文件类型不对时返回400
+            if content_type[:5] != 'image':
+                return HttpResponse(status=400)
+            # 删除旧的文件
+            if res.cover is not None:
+                old_path = '%s/%s' % (COVER_DIRS, res.cover)
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+                res.cover = None
+            # 计算新文件名和新文件路径
+            new_cover_name = '%s-%s-%s.%s' % ('profile', res.id, uuid.uuid4(), ext)
+            new_path = '%s/%s' % (COVER_DIRS, new_cover_name)
+            # 将文件名保存下来
+            res.cover = new_cover_name
+            res.save()
+            # 存储路径不存在时先创建路径
+            if not os.path.exists(COVER_DIRS):
+                os.makedirs(COVER_DIRS)
+            # 该文件万一已经存在，就删除文件
+            if os.path.exists(new_path):
+                os.remove(new_path)
+            # 将图像写入到一个临时的文件
+            temp_path = '%s/temp-%s-%s.%s' % (COVER_DIRS, 'profile', uuid.uuid4(), ext)
+            with open(temp_path, 'wb') as f:
+                for c in file.chunks():
+                    f.write(c)
+            # 处理这张图片，对其进行裁切和缩放
+            Cover.analyse_image(temp_path, new_path)
+            return response.Response({'cover': new_cover_name}, status=201)
 
 
 class Profile:
@@ -331,7 +335,7 @@ class Database:
                     diary.save()
 
         def perform_destroy(self, instance):
-            utils.remove_cache_instance(instance.id, instance.relations, lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all())
+            relations.remove_cache_instance(instance.id, instance.relations, lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all())
             super().perform_destroy(instance)
 
     class Staff(viewsets.ModelViewSet):
@@ -418,14 +422,19 @@ class Admin:
         permission_classes = (app_permissions.IsStaff,)
         lookup_field = 'username'
         filter_fields = ('user__is_staff', 'create_path')
-        search_fields = ('username', 'name')
-        ordering_fields = ('create_path', 'create_time', 'last_login')
+        search_fields = ('username', 'name', 'last_login_ip')
+        ordering_fields = ('create_path', 'create_time', 'last_login_time')
 
-    class Password(mixins.UpdateModelMixin, viewsets.GenericViewSet):
+    class Permission(mixins.UpdateModelMixin, viewsets.GenericViewSet):
         queryset = app_models.Profile.objects
-        serializer_class = app_serializers.Admin.Password
-        permission_classes = (app_permissions.Password,)
+        serializer_class = app_serializers.Admin.Permission
+        permission_classes = (app_permissions.Above,)
         lookup_field = 'username'
+
+        def perform_update(self, serializer):
+            if (not self.request.user.is_superuser) and ('is_staff' in serializer.validated_data):
+                del serializer.validated_data['is_staff']
+            super().perform_update(serializer)
 
     class RegistrationCode(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin,
                            viewsets.GenericViewSet):
@@ -434,7 +443,7 @@ class Admin:
         permission_classes = (app_permissions.IsStaff,)
         lookup_field = 'id'
         filter_fields = ('enable',)
-        ordering_fields = ('deadline', 'enable', 'used_time')
+        ordering_fields = ('deadline', 'enable', 'used_time', 'create_time')
 
     class SystemMessage(mixins.ListModelMixin, mixins.CreateModelMixin, mixins.RetrieveModelMixin,
                         viewsets.GenericViewSet):
@@ -442,6 +451,6 @@ class Admin:
         serializer_class = app_serializers.Admin.SystemMessage
         permission_classes = (app_permissions.IsStaff,)
         lookup_field = 'id'
-        filter_fields = ('read', 'owner')
+        filter_fields = ('read', 'owner__username')
         ordering_fields = ('read', 'owner', 'create_time')
         ordering = '-create_time'

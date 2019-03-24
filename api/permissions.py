@@ -1,10 +1,26 @@
 from rest_framework import permissions
 from . import models as app_models
+from django.utils import timezone
+
+
+class BasePermission(permissions.BasePermission):
+    LOGIN_REFRESH_INTERVAL = 60 * 30     # seconds
+
+    def has_permission(self, request, view):
+        if request.user.is_authenticated:
+            profile = request.user.profile
+            now = timezone.now()
+            if profile.last_login_time is None or \
+                    (now - profile.last_login_time).seconds >= self.LOGIN_REFRESH_INTERVAL:
+                profile.last_login_time = now
+                profile.last_login_ip = request.META.get('HTTP_X_FORWARDED_FOR') or request.META.get('REMOTE_ADDR')
+                profile.save()
 
 
 # 对于私有api的权限。仅持有者可rw。
-class SelfOnly(permissions.BasePermission):
+class SelfOnly(BasePermission):
     def has_permission(self, request, view):
+        super().has_permission(request, view)
         return request.user is not None and request.user.is_authenticated
 
     def has_object_permission(self, request, view, obj):
@@ -23,8 +39,9 @@ class SelfOnly(permissions.BasePermission):
             return False
 
 
-class IsStaffOrReadOnly(permissions.BasePermission):
+class IsStaffOrReadOnly(BasePermission):
     def has_permission(self, request, view):
+        super().has_permission(request, view)
         if request.method in permissions.SAFE_METHODS:
             return True
         user = request.user
@@ -32,14 +49,16 @@ class IsStaffOrReadOnly(permissions.BasePermission):
             return user.is_authenticated and user.is_staff
 
 
-class IsStaff(permissions.BasePermission):
+class IsStaff(BasePermission):
     def has_permission(self, request, view):
+        super().has_permission(request, view)
         user = request.user
         return user is not None and user.is_authenticated and user.is_staff
 
 
-class Password(permissions.BasePermission):
+class Above(BasePermission):
     def has_permission(self, request, view):
+        super().has_permission(request, view)
         user = request.user
         return user is not None and user.is_authenticated and user.is_staff
 
@@ -57,7 +76,8 @@ class Password(permissions.BasePermission):
         return is_staff and level > obj_level
 
 
-class IsSuperuser(permissions.BasePermission):
+class IsSuperuser(BasePermission):
     def has_permission(self, request, view):
+        super().has_permission(request, view)
         user = request.user
         return user is not None and user.is_authenticated and user.is_superuser

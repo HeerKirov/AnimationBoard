@@ -1,4 +1,3 @@
-from django.urls import path
 from rest_framework import routers
 from . import views as app_views
 
@@ -6,8 +5,12 @@ router = routers.DefaultRouter()
 
 router.register('user/login', app_views.User.Login, base_name='api-user-login')
 router.register('user/token', app_views.User.Token, base_name='api-user-token')
+router.register('user/refresh-token', app_views.User.RefreshToken, base_name='api-user-refresh-token')
 router.register('user/logout', app_views.User.Logout, base_name='api-user-logout')
 router.register('user/register', app_views.User.Register, base_name='api-user-register')
+
+router.register('cover/animation', app_views.Cover.Animation, base_name='api-cover-animation')
+router.register('cover/profile', app_views.Cover.Profile, base_name='api-cover-profile')
 
 router.register('profile/info', app_views.Profile.Info, base_name='api-profile-info')
 router.register('profile/password', app_views.Profile.Password, base_name='api-profile-password')
@@ -22,12 +25,9 @@ router.register('personal/comments', app_views.Personal.Comment, base_name='api-
 
 router.register('admin/setting', app_views.Admin.Setting, base_name='api-admin-setting')
 router.register('admin/users', app_views.Admin.User, base_name='api-admin-user')
-router.register('admin/users-password', app_views.Admin.Password, base_name='api-admin-password')
+router.register('admin/users-permission', app_views.Admin.Permission, base_name='api-admin-permission')
 router.register('admin/registration-code', app_views.Admin.RegistrationCode, base_name='api-admin-registration-code')
 router.register('admin/system-messages', app_views.Admin.SystemMessage, base_name='api-admin-system-message')
 
 urlpatterns = []
 urlpatterns += router.urls
-urlpatterns += [
-    path('cover/<str:target>/<str:index>/', app_views.Cover.cover)
-]

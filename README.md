@@ -37,7 +37,7 @@ AUTO_UPDATE_SETTINGS = {            # 番剧自动刷新服务的crontab配置
 }
 
 COVER_STORAGE = {                   # 封面上传服务的配置
-    'FILEPATH': 'cover'             # 封面文件存储在static文件夹中的位置
+    'FILEPATH': 'cover'             # 封面文件存储在static文件夹中的位置，不建议对此进行修改
 }
 
 ```
@@ -55,4 +55,10 @@ python3 manage.py runserver 0.0.0.0:8000    # 启动测试服务器
 ```bash
 python3 manage.py crontab add       # 注册，启动定时任务
 python3 manage.py crontab remove    # 移除定时任务
+```
+## 部署
+已经提供了可供生产环境部署的脚本文件。
+```bash
+./server-start.sh       # 启动服务器和定时任务
+./server-stop.sh        # 关闭服务器，停止定时任务
 ```

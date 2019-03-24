@@ -1,5 +1,5 @@
 from rest_framework import serializers, validators
-from . import models as app_models, enums, utils, services, exceptions as app_exceptions
+from . import models as app_models, enums, relations, services, exceptions as app_exceptions
 from django.utils import timezone
 
 
@@ -51,8 +51,8 @@ class Profile:
         last_login = serializers.DateTimeField(read_only=True)
         last_ip = serializers.CharField(read_only=True)
 
-        is_staff = serializers.BooleanField(read_only=True, source='user')
-        is_superuser = serializers.BooleanField(read_only=True, source='user')
+        is_staff = serializers.BooleanField(read_only=True, source='user.is_staff')
+        is_superuser = serializers.BooleanField(read_only=True, source='user.is_superuser')
 
         animation_update_notice = serializers.BooleanField(allow_null=False, required=False)
         night_update_mode = serializers.BooleanField(allow_null=False, required=False)
@@ -137,7 +137,7 @@ class Database:
             simple = kwargs.pop('simple', False)
             super(Database.Animation, self).__init__(*args, **kwargs)
             if simple:
-                exclude = ['original_relations', 'links', 'relations', 'publish_plan', 'subtitle_list']
+                exclude = ['original_relations', 'links', 'relations', 'subtitle_list']
                 for field_name in exclude:
                     self.fields.pop(field_name)
 
@@ -163,8 +163,8 @@ class Database:
                 validated_data['relations'] = {}
                 validated_data['original_relations'] = {}
                 instance = super().create(validated_data)
-                utils.RelationsMap(lambda i: app_models.Animation.objects.filter(id=i).first() if i >= 0 else instance,
-                                   -1, original_relations)
+                relations.RelationsMap(lambda i: app_models.Animation.objects.filter(id=i).first() if i >= 0 else instance,
+                                       -1, original_relations)
                 return app_models.Animation.objects.filter(id=instance.id).first()
             else:
                 validated_data['relations'] = {}
@@ -188,14 +188,14 @@ class Database:
                 original_relations = validated_data.pop('original_relations')
                 self.check_original_relations(original_relations)
                 super().update(instance, validated_data)    # 对animation主体的保存早于拓扑
-                utils.RelationsMap(lambda i: app_models.Animation.objects.filter(id=i).first(),
-                                   instance.id, original_relations)
+                relations.RelationsMap(lambda i: app_models.Animation.objects.filter(id=i).first(),
+                                       instance.id, original_relations)
                 return app_models.Animation.objects.filter(id=instance.id).first()
             else:
                 # 在没有更新关系，且更新了title时，才会把title更新到拓扑。
                 if 'title' in validated_data:
-                    utils.spread_cache_field(instance.id, instance.relations,
-                                             lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all(),
+                    relations.spread_cache_field(instance.id, instance.relations,
+                                                 lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all(),
                                              'title', validated_data.get('title'))
                 return super().update(instance, validated_data)
 
@@ -205,7 +205,7 @@ class Database:
                 raise app_exceptions.ApiError('RelationError', 'Relations cannot be null.')
             id_set = set()
             for (rel, id_list) in relations.items():
-                if rel not in utils.RELATIONS:
+                if rel not in relations.RELATIONS:
                     raise app_exceptions.ApiError('RelationError', 'Relations cannot be "%s".' % (rel,))
                 if not isinstance(id_list, list):
                     raise app_exceptions.ApiError('RelationError', 'Relation value must be list.')
@@ -419,36 +419,42 @@ class Admin:
         username = serializers.CharField(read_only=True)
         name = serializers.CharField(max_length=32, allow_null=False)
 
-        last_login = serializers.DateTimeField(read_only=True)
-        last_ip = serializers.CharField(read_only=True)
+        last_login_time = serializers.DateTimeField(read_only=True)
+        last_login_ip = serializers.CharField(read_only=True)
 
         create_time = serializers.DateTimeField(read_only=True)
         create_path = serializers.CharField(read_only=True)
 
-        is_staff = serializers.BooleanField(read_only=True, source='user')
+        is_staff = serializers.BooleanField(read_only=True, source='user.is_staff')
+        is_superuser = serializers.BooleanField(read_only=True, source='user.is_superuser')
 
         class Meta:
             model = app_models.Profile
-            fields = ('id', 'username', 'name', 'last_login', 'last_ip', 'create_time', 'create_path', 'is_staff')
+            fields = ('id', 'username', 'name', 'last_login_time', 'last_login_ip', 'create_time', 'create_path',
+                      'is_staff', 'is_superuser')
 
-    class Password(serializers.ModelSerializer):
+    class Permission(serializers.ModelSerializer):
         id = serializers.IntegerField(read_only=True)
         username = serializers.CharField(read_only=True)
         name = serializers.CharField(read_only=True)
         password = serializers.CharField(write_only=True, required=False, allow_blank=False,
                                          style={'input_type': 'password'})
+        is_staff = serializers.BooleanField(required=False, write_only=True)
 
         def update(self, instance, validated_data):
+            user = instance.user
             if 'password' in validated_data:
                 password = validated_data.pop('password')
-                user = instance.user
                 user.set_password(password)
-                user.save()
+            if 'is_staff' in validated_data:
+                is_staff = validated_data.pop('is_staff')
+                user.is_staff = is_staff
+            user.save()
             return super().update(instance, validated_data)
 
         class Meta:
             model = app_models.Profile
-            fields = ('id', 'username', 'name', 'password')
+            fields = ('id', 'username', 'name', 'password', 'is_staff')
 
     class RegistrationCode(serializers.ModelSerializer):
         id = serializers.IntegerField(read_only=True)
