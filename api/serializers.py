@@ -1,5 +1,5 @@
 from rest_framework import serializers, validators
-from . import models as app_models, enums, relations, services, exceptions as app_exceptions
+from . import models as app_models, enums, relations as app_relations, services, exceptions as app_exceptions
 from django.utils import timezone
 
 
@@ -188,13 +188,13 @@ class Database:
                 original_relations = validated_data.pop('original_relations')
                 self.check_original_relations(original_relations)
                 super().update(instance, validated_data)    # 对animation主体的保存早于拓扑
-                relations.RelationsMap(lambda i: app_models.Animation.objects.filter(id=i).first(),
+                app_relations.RelationsMap(lambda i: app_models.Animation.objects.filter(id=i).first(),
                                        instance.id, original_relations)
                 return app_models.Animation.objects.filter(id=instance.id).first()
             else:
                 # 在没有更新关系，且更新了title时，才会把title更新到拓扑。
                 if 'title' in validated_data:
-                    relations.spread_cache_field(instance.id, instance.relations,
+                    app_relations.spread_cache_field(instance.id, instance.relations,
                                                  lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all(),
                                              'title', validated_data.get('title'))
                 return super().update(instance, validated_data)
@@ -205,7 +205,7 @@ class Database:
                 raise app_exceptions.ApiError('RelationError', 'Relations cannot be null.')
             id_set = set()
             for (rel, id_list) in relations.items():
-                if rel not in relations.RELATIONS:
+                if rel not in app_relations.RELATIONS:
                     raise app_exceptions.ApiError('RelationError', 'Relations cannot be "%s".' % (rel,))
                 if not isinstance(id_list, list):
                     raise app_exceptions.ApiError('RelationError', 'Relation value must be list.')

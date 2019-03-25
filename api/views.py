@@ -6,7 +6,7 @@ from rest_framework import viewsets, response, status, exceptions, permissions, 
 from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
 from . import exceptions as app_exceptions, serializers as app_serializers, filters as app_filters
-from . import permissions as app_permissions, models as app_models, enums, services, relations
+from . import permissions as app_permissions, models as app_models, enums, services, relations as app_relations
 from AnimationBoard.settings import COVER_DIRS
 from PIL import Image
 import json
@@ -187,7 +187,7 @@ class Cover:
             res.cover = new_cover_name
             res.save()
             # 将文件名扩散到所有的缓存
-            relations.spread_cache_field(res.id, res.relations,
+            app_relations.spread_cache_field(res.id, res.relations,
                                          lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all(),
                                          'cover', new_cover_name)
             # 存储路径不存在时先创建路径
@@ -335,7 +335,7 @@ class Database:
                     diary.save()
 
         def perform_destroy(self, instance):
-            relations.remove_cache_instance(instance.id, instance.relations, lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all())
+            app_relations.remove_cache_instance(instance.id, instance.relations, lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all())
             super().perform_destroy(instance)
 
     class Staff(viewsets.ModelViewSet):
