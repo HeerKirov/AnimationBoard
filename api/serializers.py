@@ -163,8 +163,8 @@ class Database:
                 validated_data['relations'] = {}
                 validated_data['original_relations'] = {}
                 instance = super().create(validated_data)
-                relations.RelationsMap(lambda i: app_models.Animation.objects.filter(id=i).first() if i >= 0 else instance,
-                                       -1, original_relations)
+                app_relations.RelationsMap(lambda i: app_models.Animation.objects.filter(id=i).first() if i >= 0 else instance,
+                                           -1, original_relations)
                 return app_models.Animation.objects.filter(id=instance.id).first()
             else:
                 validated_data['relations'] = {}
