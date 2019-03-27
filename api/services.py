@@ -1,4 +1,5 @@
 from django.utils import timezone
+from django.db.models import F, Q
 from . import models as app_models, enums
 import uuid
 
@@ -50,22 +51,29 @@ class Animation:
     @staticmethod
     def refresh_published():
         print('Animation refresh published.')
-        animations = app_models.Animation.objects.all()
+        animations = app_models.Animation.objects.filter(Q(published_quantity__lt=F('sum_quantity')) |
+                                                         Q(published_quantity__isnull=True),
+                                                         sum_quantity__isnull=False).all()
         send_data = {}
         count = 0
         for animation in animations:
             if len(animation.publish_plan) > 0 and animation.sum_quantity is not None:
-                published_count, new_plan = animation.take_published_count()
+                published_count, new_plan, new_record = animation.take_published_count()
                 if published_count > 0:
                     count += 1
                     old_quantity = animation.published_quantity
                     if animation.published_quantity is None:
                         animation.published_quantity = 0
+                    if len(animation.published_record) < animation.published_quantity:
+                        animation.published_record += [None for _ in range(0, animation.published_quantity - len(animation.published_record))]
+
                     animation.publish_plan = new_plan
                     animation.published_quantity += published_count
+                    animation.published_record += new_record
                     if animation.published_quantity > animation.sum_quantity:
                         animation.published_quantity = animation.sum_quantity
                     animation.save()
+
                     new_quantity = animation.published_quantity
                     if hasattr(animation, 'diaries'):
                         data = {
@@ -75,7 +83,6 @@ class Animation:
                             "range_new": new_quantity,
                             "range_max": animation.sum_quantity
                         }
-                        animation.diaries.update(published_quantity=animation.published_quantity)
                         for diary in animation.diaries.all():
                             if diary.owner not in send_data:
                                 updates = []

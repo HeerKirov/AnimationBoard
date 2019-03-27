@@ -9,7 +9,6 @@ from . import exceptions as app_exceptions, serializers as app_serializers, filt
 from . import permissions as app_permissions, models as app_models, enums, services, relations as app_relations
 from AnimationBoard.settings import COVER_DIRS
 from PIL import Image
-import json
 import os
 import uuid
 
@@ -146,7 +145,7 @@ class Cover:
             return filename, ''
 
     @staticmethod
-    def analyse_image(in_path, out_path, size=384):
+    def analyse_image(in_path, out_path, size=256):
         img = Image.open(in_path)
         # 裁剪成正方形
         width, height = img.size
@@ -324,14 +323,19 @@ class Database:
             if hasattr(serializer.instance, 'diaries'):
                 diaries = serializer.instance.diaries.all()
                 sum_quantity = serializer.instance.sum_quantity
+                now = timezone.now()
                 for diary in diaries:
                     if diary.status != enums.DiaryStatus.give_up:
                         if sum_quantity is None:
                             diary.status = enums.DiaryStatus.ready
                         elif diary.watched_quantity >= sum_quantity:
                             diary.status = enums.DiaryStatus.complete
+                            if diary.finish_time is None:
+                                diary.finish_time = now
                         else:
                             diary.status = enums.DiaryStatus.watching
+                            if diary.finish_time is not None:
+                                diary.finish_time = None
                     diary.save()
 
         def perform_destroy(self, instance):
@@ -344,7 +348,7 @@ class Database:
         permission_classes = (app_permissions.IsStaffOrReadOnly,)
         lookup_field = 'id'
         filter_fields = ('is_organization',)
-        search_fields = ('name', 'origin_name')
+        search_fields = ('name', 'origin_name', 'remark')
         ordering_fields = ('id', 'name', 'create_time', 'update_time')
 
         def perform_create(self, serializer):

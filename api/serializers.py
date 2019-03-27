@@ -115,6 +115,7 @@ class Database:
         duration = serializers.IntegerField(allow_null=True)
         publish_plan = serializers.ListField(child=serializers.DateTimeField(allow_null=False), allow_null=False,
                                              default=lambda: [])
+        published_record = serializers.ListField(child=serializers.DateTimeField(allow_null=False), read_only=True)
         subtitle_list = serializers.ListField(child=serializers.CharField(max_length=64, allow_null=False),
                                               allow_null=False, default=lambda: [])
 
@@ -137,7 +138,7 @@ class Database:
             simple = kwargs.pop('simple', False)
             super(Database.Animation, self).__init__(*args, **kwargs)
             if simple:
-                exclude = ['original_relations', 'links', 'relations', 'subtitle_list']
+                exclude = ['original_relations', 'links', 'relations', 'subtitle_list', 'published_record']
                 for field_name in exclude:
                     self.fields.pop(field_name)
 
@@ -221,7 +222,7 @@ class Database:
             fields = ('id', 'cover', 'title', 'origin_title', 'other_title', 'staff_info',
                       'original_work_type', 'original_work_authors', 'staff_companies', 'staff_supervisors',
                       'publish_type', 'publish_time', 'sum_quantity', 'published_quantity',
-                      'duration', 'publish_plan', 'subtitle_list',
+                      'duration', 'publish_plan', 'subtitle_list', 'published_record',
                       'introduction', 'keyword', 'links', 'tags', 'limit_level', 'relations', 'original_relations',
                       'create_time', 'creator', 'update_time', 'updater')
 
@@ -229,6 +230,7 @@ class Database:
         id = serializers.IntegerField(read_only=True)
         name = serializers.CharField(allow_null=False, max_length=64)
         origin_name = serializers.CharField(allow_null=True, max_length=64)
+        remark = serializers.CharField(allow_null=True, max_length=64)
         is_organization = serializers.BooleanField(allow_null=False)
 
         create_time = serializers.DateTimeField(read_only=True)
@@ -238,7 +240,7 @@ class Database:
 
         class Meta:
             model = app_models.Staff
-            fields = ('id', 'name', 'origin_name', 'is_organization',
+            fields = ('id', 'name', 'origin_name', 'remark', 'is_organization',
                       'create_time', 'creator', 'update_time', 'updater')
 
     class Tag(serializers.ModelSerializer):
@@ -260,6 +262,7 @@ class Database:
 
 class Personal:
     class Diary(serializers.ModelSerializer):
+        supplement = serializers.BooleanField(write_only=True, default=False)
         id = serializers.IntegerField(read_only=True)
         title = serializers.CharField(read_only=True, source='animation.title')
         cover = serializers.CharField(read_only=True, source='animation.cover')
@@ -268,11 +271,12 @@ class Personal:
         watched_record = serializers.ListField(child=serializers.DateTimeField(), read_only=True)
         publish_plan = serializers.ListField(child=serializers.DateTimeField(allow_null=False), read_only=True,
                                              source='animation.publish_plan')
-        watched_quantity = serializers.IntegerField(allow_null=False, min_value=0)
+        watched_quantity = serializers.IntegerField(allow_null=False, min_value=0, required=False)
         sum_quantity = serializers.IntegerField(read_only=True, source='animation.sum_quantity')
         published_quantity = serializers.IntegerField(read_only=True, source='animation.published_quantity')
         status = serializers.ChoiceField(enums.DIARY_STATUS_CHOICE, required=False, allow_null=False)
-        finish_time = serializers.DateTimeField(read_only=True)
+        subscription_time = serializers.DateTimeField(allow_null=True, default=None)
+        finish_time = serializers.DateTimeField(allow_null=True, default=None)
 
         watch_many_times = serializers.BooleanField(allow_null=False, default=False)
         watch_original_work = serializers.BooleanField(allow_null=False, default=False)
@@ -280,13 +284,116 @@ class Personal:
         create_time = serializers.DateTimeField(read_only=True)
         update_time = serializers.DateTimeField(read_only=True)
 
+        def __init__(self, *args, **kwargs):
+            simple = kwargs.pop('simple', False)
+            super(Personal.Diary, self).__init__(*args, **kwargs)
+            if simple:
+                exclude = ['watched_record']
+                for field_name in exclude:
+                    self.fields.pop(field_name)
+
+        def __new__(cls, *args, **kwargs):
+            many = kwargs.get('many', False)
+            if many:
+                kwargs['simple'] = True
+            return super(Personal.Diary, cls).__new__(cls, *args, **kwargs)
+
         def create(self, validated_data):
+            """
+            创建一个新的diary条目。
+            创建条目的核心输入模型：
+            1： 全新的订阅模型。它将全面纳入新系统的框架管理，有完整的订阅 - 看完周期，观看记录和观看数量。
+                使用该模型不允许自定义watched quantity数量（就算有也是和update一样的逻辑），默认为0；
+                使用该模型自动将subscription time设定为create time，不允许变更；
+                使用该模型自动在watched不小于sum时设定finish time，不允许手动修改。
+            2： 补充记录模型。它意在补充那些在之前就看完或早就开始看了的记录。这将允许订阅时间|观看记录出现缺口，并允许手动填写订阅时间|看完时间。
+                watched quantity将手动填写。已完结番剧填写为sum的值，
+                                            将录入一个已结束的旧记录，会将record设为空list，
+                                            否则会填写为一个填满null的list（表示过去的观看记录丢失）。默认该值为None，视作sum。
+                subscription time默认为null，但可以手动填写。
+                finish time，如果watched >= sum，那么必须手动填写一个值，否则无视该值填写为null。finish的值不能早于subscription的值。
+                补充模型自由度看起来更高，但缺失部分关键信息会导致统计空缺。
+            此外，这个模型仅限create。在create之后，爱怎么折腾怎么折腾，行为都是一致的。
+            也就是说，补充记录模型必须在create时一次填好，不然就删了重写。
+            补充记录模型在animation有sum和至少1个publish之前禁止使用。都没发布补个鬼。
+            :param validated_data:
+            :return:
+            """
             profile = self.context['request'].user.profile
             animation = validated_data['animation']
             if app_models.Diary.objects.filter(animation=animation, owner=profile).exists():
                 raise app_exceptions.ApiError('Exists', 'Diary of this animation is exists.')
             validated_data['owner'] = profile
+            if validated_data.get('supplement'):
+                if animation.sum_quantity is None \
+                        or animation.published_quantity is None or animation.published_quantity <= 0:
+                    raise app_exceptions.ApiError('SupplementForbidden',
+                                                  'Supplement mode cannot be used before animation is published.')
+                return self.create_supplement({
+                    'owner': profile,
+                    'animation': animation,
+                    'status': validated_data.get('status', None),
+                    'watched_quantity': validated_data.get('watched_quantity', animation.sum_quantity),
+                    'subscription_time': validated_data.get('subscription_time', None),
+                    'finish_time': validated_data.get('finish_time', None),
+                    'watch_many_times': validated_data.get('watch_many_times'),
+                    'watch_original_work': validated_data.get('watch_original_work')
+                })
+            else:
+                return self.create_subscription({
+                    'owner': profile,
+                    'animation': animation,
+                    'status': validated_data.get('status', None),
+                    'watched_quantity': validated_data.get('watched_quantity', 0),
+                    'subscription_time': timezone.now(),
+                    'watch_many_times': validated_data.get('watch_many_times'),
+                    'watch_original_work': validated_data.get('watch_original_work')
+                })
 
+        def create_supplement(self, validated_data):
+            animation = validated_data['animation']
+            if animation.sum_quantity is not None and animation.published_quantity is not None:
+                sum_quantity = animation.sum_quantity
+                published_quantity = animation.published_quantity or 0
+            else:
+                sum_quantity = None
+                published_quantity = 0
+
+            # 约束watched_quantity和watched_record的数量不超过published_quantity.
+            if validated_data['watched_quantity'] > published_quantity:
+                validated_data['watched_quantity'] = published_quantity
+            watched_quantity = validated_data['watched_quantity']
+
+            status = validated_data.pop('status', None) or enums.DiaryStatus.watching
+            finish_time = validated_data.pop('finish_time')
+            subscription_time = validated_data.get('subscription_time')
+            if status != enums.DiaryStatus.give_up:
+                if sum_quantity is not None:
+                    if watched_quantity >= sum_quantity:
+                        validated_data['status'] = enums.DiaryStatus.complete
+                        if finish_time is None:
+                            raise app_exceptions.ApiError('FinishTimeNeed',
+                                                          '"finish_time" is needed in supplement mode.')
+                        elif subscription_time is not None and finish_time < subscription_time:
+                            raise app_exceptions.ApiError('FinishTimeInvalid',
+                                                          'finish_time must be lessa than subscription_time.')
+                        validated_data['finish_time'] = finish_time
+                    else:
+                        validated_data['status'] = enums.DiaryStatus.watching
+                else:
+                    validated_data['status'] = enums.DiaryStatus.ready
+            else:
+                validated_data['status'] = enums.DiaryStatus.give_up
+
+            if 0 < watched_quantity < sum_quantity:
+                validated_data['watched_record'] = [None for _ in range(0, watched_quantity)]
+            else:
+                validated_data['watched_record'] = []
+
+            return super().create(validated_data)
+
+        def create_subscription(self, validated_data):
+            animation = validated_data['animation']
             if animation.sum_quantity is not None and animation.published_quantity is not None:
                 # 提取出一个能用于约束下级数值的sum_quantity。没有时是None，因为只是个标杆。
                 sum_quantity = animation.sum_quantity
@@ -297,8 +404,7 @@ class Personal:
                 published_quantity = 0
 
             # 约束watched_quantity和watched_record的数量不超过published_quantity.
-            if validated_data.get('watched_quantity') is not None \
-                    and validated_data['watched_quantity'] > published_quantity:
+            if validated_data['watched_quantity'] > published_quantity:
                 validated_data['watched_quantity'] = published_quantity
             watched_quantity = validated_data.get('watched_quantity')
 
@@ -306,8 +412,8 @@ class Personal:
             if status != enums.DiaryStatus.give_up:
                 if sum_quantity is not None:
                     if watched_quantity >= sum_quantity:
-                        validated_data['status'] = enums.DiaryStatus.complete
                         validated_data['finish_time'] = timezone.now()
+                        validated_data['status'] = enums.DiaryStatus.complete
                     else:
                         validated_data['status'] = enums.DiaryStatus.watching
                 else:
@@ -326,7 +432,12 @@ class Personal:
         def update(self, instance, validated_data):
             if 'animation' in validated_data:
                 del validated_data['animation']
-
+            if 'subscription_time' in validated_data:
+                del validated_data['subscription_time']
+            if 'finish_time' in validated_data:
+                del validated_data['finish_time']
+            if 'mode' in validated_data:
+                del validated_data['mode']
             # 提取出latest的sum_quantity。
             sum_quantity = instance.animation.sum_quantity
             # 提取出latest的published_quantity。
@@ -349,12 +460,8 @@ class Personal:
                             validated_data['finish_time'] = timezone.now()
                     else:
                         validated_data['status'] = enums.DiaryStatus.watching
-                        if instance.finish_time is not None:
-                            validated_data['finish_time'] = None
                 else:
                     validated_data['status'] = enums.DiaryStatus.ready
-                    if instance.finish_time is not None:
-                        validated_data['finish_time'] = None
             else:
                 validated_data['status'] = enums.DiaryStatus.give_up
 
@@ -369,8 +476,8 @@ class Personal:
 
         class Meta:
             model = app_models.Diary
-            fields = ('id', 'title', 'cover', 'animation', 'watched_record', 'publish_plan',
-                      'watched_quantity', 'sum_quantity', 'published_quantity', 'finish_time',
+            fields = ('id', 'title', 'cover', 'animation', 'watched_record', 'publish_plan', 'supplement',
+                      'watched_quantity', 'sum_quantity', 'published_quantity', 'finish_time', 'subscription_time',
                       'status', 'watch_many_times', 'watch_original_work', 'create_time', 'update_time')
 
     class Comment(serializers.ModelSerializer):

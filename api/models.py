@@ -87,6 +87,7 @@ class Animation(models.Model):
     sum_quantity = models.IntegerField(null=True)
     published_quantity = models.IntegerField(null=True)
     duration = models.IntegerField(null=True)
+    published_record = ArrayField(models.DateTimeField(null=False), null=False)
     publish_plan = ArrayField(models.DateTimeField(null=False), null=False)
     subtitle_list = ArrayField(models.CharField(max_length=64, null=False), null=False)
 
@@ -114,19 +115,22 @@ class Animation(models.Model):
     def take_published_count(self):
         now = timezone.now()
         ret_plan = []
+        ret_record = []
         count = 0
         for i in self.publish_plan:
             if now >= i:
                 count += 1
+                ret_record.append(i)
             else:
                 ret_plan.append(i)
-        return count, ret_plan
+        return count, ret_plan, ret_record
 
 
 class Staff(models.Model):
     id = models.BigAutoField(primary_key=True, null=False)
     name = models.CharField(max_length=64, null=False)
     origin_name = models.CharField(max_length=64, null=True)
+    remark = models.CharField(max_length=64, null=True)
     is_organization = models.BooleanField(null=False)
 
     create_time = models.DateTimeField(null=False, auto_now_add=True)
@@ -165,9 +169,10 @@ class Diary(models.Model):
     owner = models.ForeignKey(Profile, on_delete=models.CASCADE, null=False, related_name='diaries')
     animation = models.ForeignKey(Animation, on_delete=models.CASCADE, null=False, related_name='diaries')
 
-    watched_record = ArrayField(models.DateTimeField(null=False), null=False)
+    watched_record = ArrayField(models.DateTimeField(null=True), null=False)
     watched_quantity = models.IntegerField(null=False)
     status = models.CharField(choices=enums.DIARY_STATUS_CHOICE, max_length=10, null=False)
+    subscription_time = models.DateTimeField(null=True)
     finish_time = models.DateTimeField(null=True, default=None)
 
     watch_many_times = models.BooleanField(null=False)
