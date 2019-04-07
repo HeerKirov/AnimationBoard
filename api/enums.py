@@ -61,6 +61,12 @@ class MessageType:
     update = 'UPDATE'
 
 
+class AnimationPublishType:
+    general = 'GENERAL'
+    movie = 'MOVIE'
+    ova = 'OVA'
+
+
 class DiaryStatus:
     ready = 'READY'
     watching = 'WATCHING'

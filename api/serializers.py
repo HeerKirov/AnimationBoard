@@ -149,6 +149,7 @@ class Database:
             return super(Database.Animation, cls).__new__(cls, *args, **kwargs)
 
         def create(self, validated_data):
+            validated_data['published_record'] = []
             sum_quantity = validated_data.get('sum_quantity')
             published_quantity = validated_data.get('published_quantity')
             if sum_quantity is None:

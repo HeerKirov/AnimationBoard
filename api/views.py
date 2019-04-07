@@ -145,7 +145,7 @@ class Cover:
             return filename, ''
 
     @staticmethod
-    def analyse_image(in_path, out_path, size=256):
+    def analyse_image(in_path, out_path, size=384):
         img = Image.open(in_path)
         # 裁剪成正方形
         width, height = img.size
@@ -155,7 +155,7 @@ class Cover:
             img = img.crop((0, (height - width) / 2, width, (height + width) / 2))
         # 压缩到极小的尺寸
         img.thumbnail((size, size))
-        img.save(out_path)
+        img.convert('RGB').save(out_path)
         os.remove(in_path)
 
     class Animation(viewsets.ViewSet):
@@ -180,7 +180,7 @@ class Cover:
                     os.remove(old_path)
                 res.cover = None
             # 计算新文件名和新文件路径
-            new_cover_name = '%s-%s-%s.%s' % ('animation', res.id, uuid.uuid4(), ext)
+            new_cover_name = '%s-%s-%s.%s' % ('animation', res.id, uuid.uuid4(), 'jpg')
             new_path = '%s/%s' % (COVER_DIRS, new_cover_name)
             # 将文件名保存下来
             res.cover = new_cover_name
@@ -226,7 +226,7 @@ class Cover:
                     os.remove(old_path)
                 res.cover = None
             # 计算新文件名和新文件路径
-            new_cover_name = '%s-%s-%s.%s' % ('profile', res.id, uuid.uuid4(), ext)
+            new_cover_name = '%s-%s-%s.%s' % ('profile', res.id, uuid.uuid4(), 'jpg')
             new_path = '%s/%s' % (COVER_DIRS, new_cover_name)
             # 将文件名保存下来
             res.cover = new_cover_name

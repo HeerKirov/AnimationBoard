@@ -1,6 +1,7 @@
 from django.utils import timezone
 from django.db.models import F, Q
 from . import models as app_models, enums
+from datetime import timedelta
 import uuid
 
 
@@ -61,11 +62,14 @@ class Animation:
                 published_count, new_plan, new_record = animation.take_published_count()
                 if published_count > 0:
                     count += 1
-                    old_quantity = animation.published_quantity
                     if animation.published_quantity is None:
                         animation.published_quantity = 0
+                    old_quantity = animation.published_quantity
                     if len(animation.published_record) < animation.published_quantity:
-                        animation.published_record += [None for _ in range(0, animation.published_quantity - len(animation.published_record))]
+                        animation.published_record += \
+                            [None for _ in range(0, animation.published_quantity - len(animation.published_record))]
+                    elif len(animation.published_record) > animation.published_quantity:
+                        animation.published_record = animation.published_record[:animation.published_quantity]
 
                     animation.publish_plan = new_plan
                     animation.published_quantity += published_count
@@ -109,3 +113,7 @@ class Setting:
         if not Setting.exists():
             setting = app_models.GlobalSetting(**kwargs)
             app_models.GlobalSetting.save(setting)
+
+
+class Statistics:
+    pass

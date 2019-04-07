@@ -262,7 +262,7 @@ class RelationsMap(object):
         return ret
 
 
-def spread_cache_field(instance_id, relations, query, field_name, value):
+def spread_cache_field(instance_id, relations, query, field_name, value, save_action=None):
     """
     更新关系网络中，instance的field_name缓存的值为value。
     :param instance_id:
@@ -270,6 +270,7 @@ def spread_cache_field(instance_id, relations, query, field_name, value):
     :param query:
     :param field_name:
     :param value:
+    :param save_action:
     :return:
     """
     id_list = []
@@ -295,7 +296,10 @@ def spread_cache_field(instance_id, relations, query, field_name, value):
                         flag = True
                     # FIXED END
             if flag:
-                animation.save()
+                if save_action is None:
+                    animation.save()
+                else:
+                    save_action(animation)
 
 
 def remove_cache_instance(instance_id, relations, query):
