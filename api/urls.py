@@ -23,6 +23,8 @@ router.register('database/tags', app_views.Database.Tag, base_name='api-database
 router.register('personal/diaries', app_views.Personal.Diary, base_name='api-personal-diary')
 router.register('personal/comments', app_views.Personal.Comment, base_name='api-personal-comment')
 
+router.register('statistics', app_views.Statistics, base_name='api-statistics')
+
 router.register('admin/setting', app_views.Admin.Setting, base_name='api-admin-setting')
 router.register('admin/users', app_views.Admin.User, base_name='api-admin-user')
 router.register('admin/users-permission', app_views.Admin.Permission, base_name='api-admin-permission')

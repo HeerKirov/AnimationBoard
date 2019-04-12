@@ -197,5 +197,17 @@ class Comment(models.Model):
     title = models.CharField(max_length=64, null=False, blank=False)
 
 
+class Statistics(models.Model):
+    id = models.BigAutoField(primary_key=True, null=False)
+    owner = models.ForeignKey(Profile, on_delete=models.CASCADE, null=True, related_name='statistics')
+
+    type = models.CharField(null=False, max_length=32)
+    key = models.CharField(null=True, max_length=256)
+    content = JSONField(null=False)
+
+    create_time = models.DateTimeField(null=False, auto_now_add=True)
+    update_time = models.DateTimeField(null=True, auto_now=True)
+
+
 class GlobalSetting(models.Model):
     register_mode = models.CharField(choices=enums.GLOBAL_SETTING_REGISTER_MODE_CHOICE, max_length=10, null=False)

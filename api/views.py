@@ -5,7 +5,7 @@ from django.utils import timezone
 from rest_framework import viewsets, response, status, exceptions, permissions, mixins
 from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
-from . import exceptions as app_exceptions, serializers as app_serializers, filters as app_filters
+from . import exceptions as app_exceptions, serializers as app_serializers, filters as app_filters, statistics
 from . import permissions as app_permissions, models as app_models, enums, services, relations as app_relations
 from AnimationBoard.settings import COVER_DIRS
 from PIL import Image
@@ -402,6 +402,58 @@ class Personal:
 
         def get_queryset(self):
             return self.queryset.filter(owner=self.request.user.profile).all()
+
+
+class Statistics(viewsets.ViewSet):
+    serializer_class = app_serializers.Statistics
+    permission_classes = (app_permissions.IsLogin,)
+
+    @staticmethod
+    def list(request):
+        return Statistics.action(request, False)
+
+    @staticmethod
+    def create(request):
+        return Statistics.action(request, True)
+
+    @staticmethod
+    def action(request, create):
+        def get_parameter(field, translate=None):
+            if field not in request.query_params:
+                raise app_exceptions.ApiError('RequireParameter', 'parameter "%s" is required.' % (field,))
+            result = request.query_params[field]
+            if translate is not None:
+                try:
+                    return translate(result)
+                except Exception:
+                    raise app_exceptions.ApiError('WrongParameterType',
+                                                  'parameter "%s" cannot be translated to correct type.' % (field,))
+            return result
+        if 'type' not in request.query_params:
+            raise app_exceptions.ApiError('NoType', 'parameter "type" is required.')
+        tp = request.query_params['type']
+        profile = request.user.profile
+        if tp == services.Statistics.OVERVIEW:
+            model = services.Statistics.overview(profile, create)
+        elif tp == services.Statistics.SEASON_TABLE:
+            model = services.Statistics.season_table(profile,
+                                                     get_parameter('year', lambda i: int(i)),
+                                                     get_parameter('season', lambda i: int(i)),
+                                                     create)
+        elif tp == services.Statistics.SEASON_CHART:
+            model = services.Statistics.season_chart(profile, create)
+        elif tp == services.Statistics.TIMELINE:
+            model = services.Statistics.timeline(profile,
+                                                 get_parameter('key', lambda key: key if key else None),
+                                                 request.data if create else None)
+        elif tp == services.Statistics.TIMELINE_RECORD:
+            model = services.Statistics.timeline_record(profile)
+        else:
+            raise app_exceptions.ApiError('WrongType', 'unknown type "%s".' % (tp,))
+        if model is None:
+            return response.Response(status=status.HTTP_404_NOT_FOUND)
+        serializer = Statistics.serializer_class(instance=model)
+        return response.Response(serializer.data)
 
 
 class Admin:

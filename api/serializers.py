@@ -261,6 +261,20 @@ class Database:
                       'create_time', 'creator', 'update_time', 'updater')
 
 
+class Statistics(serializers.ModelSerializer):
+    id = serializers.IntegerField(read_only=True)
+    type = serializers.CharField(read_only=True)
+    key = serializers.CharField(read_only=True)
+    content = serializers.JSONField(read_only=True)
+
+    create_time = serializers.DateTimeField(read_only=True)
+    update_time = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        model = app_models.Statistics
+        fields = ('id', 'type', 'key', 'content', 'create_time', 'update_time')
+
+
 class Personal:
     class Diary(serializers.ModelSerializer):
         supplement = serializers.BooleanField(write_only=True, default=False)

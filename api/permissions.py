@@ -17,6 +17,13 @@ class BasePermission(permissions.BasePermission):
                 profile.save()
 
 
+class IsLogin(BasePermission):
+    def has_permission(self, request, view):
+        super().has_permission(request, view)
+        user = request.user
+        return user is not None and user.is_authenticated
+
+
 # 对于私有api的权限。仅持有者可rw。
 class SelfOnly(BasePermission):
     def has_permission(self, request, view):
