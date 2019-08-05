@@ -91,7 +91,7 @@ def generate_overview(profile):
         'count': count,
         'limit_level': limit_level,
         'tags': tags_list,
-        'score_avg': score_sum / count,
+        'score_avg': (score_sum / count) if count > 0 else 0,
         'score': score,
         'original_work_type': original_work_type,
         'publish_type': publish_type

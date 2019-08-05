@@ -384,8 +384,8 @@ class Personal:
         permission_classes = (app_permissions.SelfOnly,)
         lookup_field = 'animation_id'
         filterset_class = app_filters.Personal.Diary
-        search_fields = ('title',)
-        ordering_fields = ('id', 'title', 'watched_quantity', 'sum_quantity', 'published_quantity', 'status',
+        search_fields = ('animation__title',)
+        ordering_fields = ('id', 'animation__title', 'watched_quantity', 'sum_quantity', 'published_quantity', 'status',
                            'create_time', 'update_time', 'finish_time')
 
         def get_queryset(self):

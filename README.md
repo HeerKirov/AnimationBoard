@@ -1,5 +1,4 @@
 # Animation Board
-> Coding...
 
 ## 部署
 ### 配置文件
