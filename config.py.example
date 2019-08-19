@@ -27,7 +27,15 @@ AUTO_UPDATE_SETTINGS = {
 }
 
 COVER_STORAGE = {
-    'FILEPATH': 'cover'
+    'TYPE': 'oss',
+    'FILEPATH': 'cover',
+    'OSS': {
+        'endpoint': 'http://oss-cn-hangzhou.aliyuncs.com',
+        'bucket_name': 'animation-board',
+        'access_key_id': '',
+        'access_key_secret': '',
+        'sign_timeout': 60 * 60 * 24
+    }
 }
 
 BASIC_TIMEZONE = 9

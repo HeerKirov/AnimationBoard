@@ -11,6 +11,7 @@ router.register('user/register', app_views.User.Register, base_name='api-user-re
 
 router.register('cover/animation', app_views.Cover.Animation, base_name='api-cover-animation')
 router.register('cover/profile', app_views.Cover.Profile, base_name='api-cover-profile')
+router.register('cover', app_views.Cover, base_name='api-cover')
 
 router.register('profile/info', app_views.Profile.Info, base_name='api-profile-info')
 router.register('profile/password', app_views.Profile.Password, base_name='api-profile-password')

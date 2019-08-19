@@ -1,4 +1,4 @@
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.contrib.auth import authenticate, login, logout
 from django.utils import timezone
@@ -7,10 +7,11 @@ from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
 from . import exceptions as app_exceptions, serializers as app_serializers, filters as app_filters, statistics
 from . import permissions as app_permissions, models as app_models, enums, services, relations as app_relations
-from AnimationBoard.settings import COVER_DIRS
+from AnimationBoard.settings import COVER_DIRS, STATIC_URL
 from PIL import Image
 import os
 import uuid
+import config
 
 
 class User:
@@ -135,7 +136,116 @@ class User:
             pass
 
 
-class Cover:
+class Cover(viewsets.ViewSet):
+    @staticmethod
+    def list(request):
+        index = request.query_params.get('id')
+        if index is None or len(index) <= 0:
+            return response.Response('Not Found.', status=404)
+        if config.COVER_STORAGE['TYPE'] == 'oss':
+            from api.oss import bucket, sign_url
+            return HttpResponseRedirect(sign_url(index))
+        else:
+            return HttpResponseRedirect('%scover/%s' % (STATIC_URL, index))
+
+    class Animation(viewsets.ViewSet):
+        permission_classes = (app_permissions.IsStaff,)
+
+        @staticmethod
+        def create(request):
+            index = request.POST.get('id')
+            res = app_models.Animation.objects.filter(id=index).first()
+            if res is None:
+                return response.Response(status=404)
+            file = request.FILES.get('cover')
+            name, ext = Cover.split_filename(file.name)
+            content_type = file.content_type
+            # 文件类型不对时返回400
+            if content_type[:5] != 'image':
+                return response.Response(status=400)
+            old_cover_name = res.cover
+            # 计算新文件名
+            new_cover_name = '%s-%s-%s.%s' % ('animation', res.id, uuid.uuid4(), 'jpg')
+            if config.COVER_STORAGE['TYPE'] == 'oss':
+                Cover.analyse_save_oss(old_cover_name, new_cover_name, 'animation', ext, file.chunks())
+            else:
+                Cover.analyse_save_fs(old_cover_name, new_cover_name, 'animation', ext, file.chunks())
+            # 将文件名保存下来
+            res.cover = new_cover_name
+            res.save()
+            # 将文件名扩散到所有的缓存
+            app_relations.spread_cache_field(res.id, res.relations,
+                                             lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all(),
+                                             'cover', new_cover_name)
+            return response.Response({'cover': new_cover_name}, status=201)
+
+    class Profile(viewsets.ViewSet):
+        @staticmethod
+        def create(request):
+            index = request.data.get('id')
+            res = app_models.Profile.objects.filter(username=index).first()
+            if res is None:
+                return response.Response(status=404)
+            if not app_permissions.SelfOnly().has_object_permission(request, None, res):
+                return response.Response(status=403)
+            file = request.FILES.get('cover')
+            name, ext = Cover.split_filename(file.name)
+            content_type = file.content_type
+            # 文件类型不对时返回400
+            if content_type[:5] != 'image':
+                return HttpResponse(status=400)
+            old_cover_name = res.cover
+            # 计算新文件名
+            new_cover_name = '%s-%s-%s.%s' % ('profile', res.id, uuid.uuid4(), 'jpg')
+            if config.COVER_STORAGE['TYPE'] == 'oss':
+                Cover.analyse_save_oss(old_cover_name, new_cover_name, 'profile', ext, file.chunks())
+            else:
+                Cover.analyse_save_fs(old_cover_name, new_cover_name, 'profile', ext, file.chunks())
+            # 将文件名保存下来
+            res.cover = new_cover_name
+            res.save()
+            return response.Response({'cover': new_cover_name}, status=201)
+
+    @staticmethod
+    def analyse_save_fs(old_cover_name, new_cover_name, kind, ext, chunks):
+        # 删除旧的文件
+        if old_cover_name is not None:
+            old_path = '%s/%s' % (COVER_DIRS, old_cover_name)
+            if os.path.exists(old_path):
+                os.remove(old_path)
+        # 存储路径不存在时先创建路径
+        if not os.path.exists(COVER_DIRS):
+            os.makedirs(COVER_DIRS)
+        new_path = '%s/%s' % (COVER_DIRS, new_cover_name)
+        # 该文件万一已经存在，就删除文件
+        if os.path.exists(new_path):
+            os.remove(new_path)
+        # 将图像写入到一个临时的文件
+        temp_path = '%s/temp-%s-%s.%s' % (COVER_DIRS, kind, uuid.uuid4(), ext)
+        with open(temp_path, 'wb') as f:
+            for c in chunks:
+                f.write(c)
+        # 处理这张图片，对其进行裁切和缩放，然后写入到保存路径
+        Cover.analyse_image(temp_path, new_path)
+
+    @staticmethod
+    def analyse_save_oss(old_cover_name, new_cover_name, kind, ext, chunks):
+        from api.oss import bucket
+        # 删除旧的文件
+        if old_cover_name is not None:
+            bucket.delete_object(old_cover_name)
+        # 将图像写入到一个临时的文件
+        u = uuid.uuid4()
+        temp_path = '%s/temp-%s-%s.%s' % (COVER_DIRS, kind, u, ext)
+        temp_path_out = '%s/temp-%s-%s.out.%s' % (COVER_DIRS, kind, u, ext)
+        with open(temp_path, 'wb') as f:
+            for c in chunks:
+                f.write(c)
+        # 处理这张图片，对其进行裁切和缩放，然后写入到oss存储
+        Cover.analyse_image(temp_path, temp_path_out)
+        bucket.put_object_from_file(new_cover_name, temp_path_out)
+        os.remove(temp_path_out)
+
     @staticmethod
     def split_filename(filename):
         p = filename.rfind('.')
@@ -157,94 +267,6 @@ class Cover:
         img.thumbnail((size, size))
         img.convert('RGB').save(out_path)
         os.remove(in_path)
-
-    class Animation(viewsets.ViewSet):
-        permission_classes = (app_permissions.IsStaff,)
-
-        @staticmethod
-        def create(request):
-            index = request.POST.get('id')
-            res = app_models.Animation.objects.filter(id=index).first()
-            if res is None:
-                return response.Response(status=404)
-            file = request.FILES.get('cover')
-            name, ext = Cover.split_filename(file.name)
-            content_type = file.content_type
-            # 文件类型不对时返回400
-            if content_type[:5] != 'image':
-                return response.Response(status=400)
-            # 删除旧的文件
-            if res.cover is not None:
-                old_path = '%s/%s' % (COVER_DIRS, res.cover)
-                if os.path.exists(old_path):
-                    os.remove(old_path)
-                res.cover = None
-            # 计算新文件名和新文件路径
-            new_cover_name = '%s-%s-%s.%s' % ('animation', res.id, uuid.uuid4(), 'jpg')
-            new_path = '%s/%s' % (COVER_DIRS, new_cover_name)
-            # 将文件名保存下来
-            res.cover = new_cover_name
-            res.save()
-            # 将文件名扩散到所有的缓存
-            app_relations.spread_cache_field(res.id, res.relations,
-                                         lambda id_list: app_models.Animation.objects.filter(id__in=id_list).all(),
-                                         'cover', new_cover_name)
-            # 存储路径不存在时先创建路径
-            if not os.path.exists(COVER_DIRS):
-                os.makedirs(COVER_DIRS)
-            # 该文件万一已经存在，就删除文件
-            if os.path.exists(new_path):
-                os.remove(new_path)
-            # 将图像写入到一个临时的文件
-            temp_path = '%s/temp-%s-%s.%s' % (COVER_DIRS, 'animation', uuid.uuid4(), ext)
-            with open(temp_path, 'wb') as f:
-                for c in file.chunks():
-                    f.write(c)
-            # 处理这张图片，对其进行裁切和缩放
-            Cover.analyse_image(temp_path, new_path)
-            return response.Response({'cover': new_cover_name}, status=201)
-
-    class Profile(viewsets.ViewSet):
-        @staticmethod
-        def create(request):
-            index = request.data.get('id')
-            res = app_models.Profile.objects.filter(username=index).first()
-            if res is None:
-                return response.Response(status=404)
-            if not app_permissions.SelfOnly().has_object_permission(request, None, res):
-                return response.Response(status=403)
-            file = request.FILES.get('cover')
-            name, ext = Cover.split_filename(file.name)
-            content_type = file.content_type
-            # 文件类型不对时返回400
-            if content_type[:5] != 'image':
-                return HttpResponse(status=400)
-            # 删除旧的文件
-            if res.cover is not None:
-                old_path = '%s/%s' % (COVER_DIRS, res.cover)
-                if os.path.exists(old_path):
-                    os.remove(old_path)
-                res.cover = None
-            # 计算新文件名和新文件路径
-            new_cover_name = '%s-%s-%s.%s' % ('profile', res.id, uuid.uuid4(), 'jpg')
-            new_path = '%s/%s' % (COVER_DIRS, new_cover_name)
-            # 将文件名保存下来
-            res.cover = new_cover_name
-            res.save()
-            # 存储路径不存在时先创建路径
-            if not os.path.exists(COVER_DIRS):
-                os.makedirs(COVER_DIRS)
-            # 该文件万一已经存在，就删除文件
-            if os.path.exists(new_path):
-                os.remove(new_path)
-            # 将图像写入到一个临时的文件
-            temp_path = '%s/temp-%s-%s.%s' % (COVER_DIRS, 'profile', uuid.uuid4(), ext)
-            with open(temp_path, 'wb') as f:
-                for c in file.chunks():
-                    f.write(c)
-            # 处理这张图片，对其进行裁切和缩放
-            Cover.analyse_image(temp_path, new_path)
-            return response.Response({'cover': new_cover_name}, status=201)
 
 
 class Profile:
