@@ -18,7 +18,7 @@ def sign_url(file_name):
     url = None
     if file_name in sign_url_cache:
         timeout = sign_timeout_cache.get(file_name)
-        if timeout < now:
+        if timeout > now:
             url = sign_url_cache.get(file_name)
     if url is None:
         url = bucket.sign_url('GET', file_name, config.COVER_STORAGE['OSS']['sign_timeout'])
