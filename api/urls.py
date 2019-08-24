@@ -4,6 +4,7 @@ from . import views as app_views
 router = routers.DefaultRouter()
 
 router.register('user/login', app_views.User.Login, base_name='api-user-login')
+router.register('user/log-status', app_views.User.LogStatus, base_name='api-user-log-status')
 router.register('user/token', app_views.User.Token, base_name='api-user-token')
 router.register('user/refresh-token', app_views.User.RefreshToken, base_name='api-user-refresh-token')
 router.register('user/logout', app_views.User.Logout, base_name='api-user-logout')

@@ -34,6 +34,11 @@ class User:
             else:
                 raise exceptions.AuthenticationFailed()
 
+    class LogStatus(viewsets.ViewSet):
+        @staticmethod
+        def list(request):
+            return response.Response({'login': request.user.is_authenticated}, status=status.HTTP_200_OK)
+
     class Token(viewsets.ViewSet):
         @staticmethod
         def create(request):
